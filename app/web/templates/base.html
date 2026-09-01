@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block titulo %}Sellout semanal{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="faixa">
+  <div class="caixa">
+    <h1>Atualização semanal do sellout</h1>
+    <p>{% block subtitulo %}E.GREY — planilhas Geral e Clássicos{% endblock %}</p>
+  </div>
+</div>
+<main class="caixa">
+{% block conteudo %}{% endblock %}
+</main>
+</body>
+</html>

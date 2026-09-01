@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block subtitulo %}Passo 1 de 3 — enviar as planilhas{% endblock %}
+{% block conteudo %}
+
+{% if erro %}<div class="erro">{{ erro }}</div>{% endif %}
+
+<form method="post" action="/analisar" enctype="multipart/form-data"
+      onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Analisando…'">
+  <div class="painel">
+    <h2>Planilhas da semana</h2>
+    <p class="ajuda">A planilha geral precisa das abas Estoque, Vendas, Producao, Preco e Produtos —
+      é dela que saem os dados das duas planilhas.</p>
+    <div class="duplas">
+      <div>
+        <label class="campo" for="geral">sellout geral.xlsx</label>
+        <input type="file" id="geral" name="geral" accept=".xlsx" required>
+      </div>
+      <div>
+        <label class="campo" for="classicos">Sellout Clássicos.xlsx</label>
+        <input type="file" id="classicos" name="classicos" accept=".xlsx" required>
+      </div>
+    </div>
+  </div>
+
+  <div class="acoes">
+    <button type="submit">Analisar</button>
+    <p class="ajuda">Nada é alterado agora. O próximo passo mostra o que precisa da sua decisão.</p>
+  </div>
+</form>
+
+<div class="painel" style="margin-top:26px">
+  <h2>O que a rodada faz</h2>
+  <ul class="ajuda" style="margin:8px 0 0; padding-left:18px">
+    <li>Cria a coluna nova de sellout e congela a semana anterior ao lado.</li>
+    <li>Atualiza Estoque atual e soma as vendas de Jardins, Iguatemi e Site.</li>
+    <li>Divide os códigos duplicados pelas cores escritas em vermelho na descrição.</li>
+    <li>Soma a produção no Estoque inicial e insere os produtos novos no bloco da coleção.</li>
+    <li>Refaz os subtotais de bloco e recalcula o Nível de Estoque pela aba Preco.</li>
+  </ul>
+</div>
+
+{% endblock %}

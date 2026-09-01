@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block subtitulo %}Passo 2 de 3 — conferir antes de gerar{% endblock %}
+{% block conteudo %}
+
+<form method="post" action="/processar"
+      onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Processando…'">
+<input type="hidden" name="job" value="{{ job }}">
+
+<div class="painel">
+  <h2>Data da rodada</h2>
+  <p class="ajuda">Vira o nome da coluna nova de sellout. A coluna da semana passada é congelada ao lado.</p>
+  <label class="campo" for="data_sellout">Nome da coluna</label>
+  <input type="text" id="data_sellout" name="data_sellout" value="{{ a.data_sugerida }}" required>
+</div>
+
+<div class="painel">
+  <h2>Filiais do estoque</h2>
+  <p class="ajuda">Encontradas na aba Estoque desta semana. Só as marcadas entram na soma do Estoque atual
+    e no Nível de Estoque.</p>
+  {% for f in a.filiais_estoque %}
+  <label class="opcao">
+    <input type="checkbox" name="filial" value="{{ f }}" checked>
+    <span class="rotulo">{{ f }}</span>
+  </label>
+  {% endfor %}
+</div>
+
+<div class="painel">
+  <h2>Regra da produção</h2>
+  <label class="opcao">
+    <input type="checkbox" name="producao_exige_estoque" value="sim" checked>
+    <span>
+      <span class="rotulo">Só somar produção se o produto tiver estoque atual</span>
+      <span class="detalhe">Desmarcado, a produção entra no Estoque inicial mesmo com estoque zerado.</span>
+    </span>
+  </label>
+</div>
+
+{% if a.duplicados_pendentes %}
+<div class="painel">
+  <h2>Códigos duplicados sem divisão definida <span class="chip">{{ a.duplicados_pendentes|length }}</span></h2>
+  <p class="ajuda">O texto em vermelho não resolveu quais cores pertencem a cada linha. Escolha o destino
+    do estoque e das vendas destes códigos.</p>
+  {% for d in a.duplicados_pendentes %}
+  <div class="pendencia">
+    <h3>{{ d.codigo }} — {{ d.linhas[0].descricao }}</h3>
+    <p class="motivo">{{ d.planilha }} · {{ d.aba }} · {{ d.motivo }}
+      · {{ d.estoque }} pçs em estoque, {{ d.vendas }} vendidas
+      {%- if d.cores %} · cores: {{ d.cores|join(', ') }}{% endif %}</p>
+    <label class="opcao">
+      <input type="radio" name="dup:{{ d.chave }}" value="manter" checked>
+      <span>
+        <span class="rotulo">Manter as duas linhas como estão</span>
+        <span class="detalhe">Nenhuma alteração em estoque, vendas ou produção; ficam marcadas como MANTER.</span>
+      </span>
+    </label>
+    {% for l in d.linhas %}
+    <label class="opcao">
+      <input type="radio" name="dup:{{ d.chave }}" value="idx:{{ l.idx }}">
+      <span>
+        <span class="rotulo">Concentrar tudo na linha {{ l.linha }}</span>
+        <span class="detalhe">{{ l.descricao }}{% if l.vermelho %} · em vermelho: {{ l.vermelho }}{% endif %}</span>
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if a.novos_candidatos %}
+<div class="painel">
+  <h2>Produtos novos <span class="chip">{{ a.novos_candidatos|length }}</span></h2>
+  <p class="ajuda">Estão na aba Produtos, ainda não existem nas planilhas e têm movimento.
+    Entram ao final do bloco da coleção, com as fórmulas replicadas.
+    Já vêm marcados os que têm estoque.</p>
+  <div class="lista-rolagem">
+    {% for n in a.novos_candidatos %}
+    <label class="opcao">
+      <input type="checkbox" name="novo" value="{{ n.codigo }}" {% if n.estoque > 0 %}checked{% endif %}
+             {% if not n.aba %}disabled{% endif %}>
+      <span>
+        <span class="rotulo">{{ n.codigo }} — {{ n.descricao }}</span>
+        <span class="detalhe">
+          {%- if n.aba %}{{ n.aba }} · {{ n.colecao }}{% else %}sem Divisão preenchida na aba Produtos{% endif %}
+          · estoque {{ n.estoque }} · vendas {{ n.vendas }} · produção {{ n.producao }}</span>
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="painel">
+  <h2>Já resolvido automaticamente</h2>
+  <p class="ajuda">Não precisa de ação — está aqui só para conferência.</p>
+  <table>
+    <tr><th>Situação</th><th class="num">Qtde</th></tr>
+    <tr><td>Códigos duplicados divididos pelo texto em vermelho</td>
+        <td class="num">{{ a.duplicados_resolvidos|length }}</td></tr>
+    <tr><td>Filiais encontradas na aba Vendas</td>
+        <td class="num">{{ a.filiais_vendas|join(', ') }}</td></tr>
+    <tr><td>Produção de códigos fora da aba Produtos</td>
+        <td class="num">{{ a.producao_sem_destino|sum(attribute='qtde') }} pç</td></tr>
+  </table>
+</div>
+
+<div class="acoes">
+  <button type="submit">Gerar planilhas</button>
+  <a class="voltar" href="/">Recomeçar com outros arquivos</a>
+</div>
+</form>
+
+{% endblock %}

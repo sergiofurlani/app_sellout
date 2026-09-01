@@ -1,0 +1,252 @@
+"""Leitura das planilhas: fontes de dados e estrutura das abas de trabalho."""
+
+from __future__ import annotations
+
+import re
+from collections import defaultdict
+from dataclasses import dataclass, field
+
+import openpyxl
+from openpyxl.cell.rich_text import CellRichText
+
+from .cores import nrm
+
+VERMELHOS = {"FFFF0000", "00FF0000"}
+ABAS_TRABALHO = ("Masculino", "Feminino")
+
+
+def norm_codigo(valor):
+    """Códigos vêm ora como texto, ora como número. Uniformiza."""
+    if valor is None:
+        return None
+    if isinstance(valor, float) and valor.is_integer():
+        valor = int(valor)
+    return str(valor).strip()
+
+
+def texto(valor):
+    """Texto puro de uma célula que pode ser rich text."""
+    if isinstance(valor, CellRichText):
+        return "".join(str(t) for t in valor)
+    return valor
+
+
+def vermelho(valor) -> str:
+    """Só os trechos escritos em vermelho — é onde a cor do produto aparece."""
+    if not isinstance(valor, CellRichText):
+        return ""
+    partes = []
+    for t in valor:
+        fonte = getattr(t, "font", None)
+        cor = getattr(fonte, "color", None) if fonte else None
+        if cor is not None and getattr(cor, "rgb", None) in VERMELHOS:
+            partes.append(str(t))
+    return "".join(partes).strip()
+
+
+def colecao_do_bloco(titulo) -> str | None:
+    """"MASCULINO - SS 27" -> "SS27"."""
+    achado = re.search(r"\b(SS|AW)\s*(\d{2})\b", nrm(titulo))
+    return achado.group(1) + achado.group(2) if achado else None
+
+
+# --------------------------------------------------------------------------- #
+# Fontes de dados (sempre vindas da planilha geral)
+# --------------------------------------------------------------------------- #
+
+@dataclass
+class Fontes:
+    estoque: dict = field(default_factory=dict)        # cod -> cor -> qtd
+    linhas_estoque: list = field(default_factory=list)  # (cod, cor, codcor, tam, qtd)
+    vendas: dict = field(default_factory=dict)          # cod -> cor -> filial -> qtd
+    producao: dict = field(default_factory=dict)        # cod -> cor -> qtd
+    preco: dict = field(default_factory=dict)           # (cod, codcor, tam) -> valor
+    preco_cor: dict = field(default_factory=dict)
+    preco_produto: dict = field(default_factory=dict)
+    produtos: list = field(default_factory=list)
+    filiais_estoque: list = field(default_factory=list)
+    filiais_vendas: list = field(default_factory=list)
+
+    def cores_do_codigo(self, codigo) -> set:
+        disp = set(self.estoque.get(codigo, {}))
+        disp |= set(self.vendas.get(codigo, {}))
+        disp |= set(self.producao.get(codigo, {}))
+        disp.discard("")
+        return disp
+
+    def preco_de(self, codigo, codcor, tamanho):
+        """Preço exato; se faltar, cai para o mesmo código."""
+        exato = self.preco.get((codigo, codcor, tamanho))
+        if exato is not None:
+            return exato, "exato"
+        cor = self.preco_cor.get((codigo, codcor))
+        if cor is not None:
+            return cor, "mesma cor"
+        produto = self.preco_produto.get(codigo)
+        if produto is not None:
+            return produto, "mesmo código"
+        return None, "sem preço"
+
+
+ABAS_FONTE = ("Estoque", "Vendas", "Producao", "Preco", "Produtos")
+
+
+def abas_faltando(caminho) -> list[str]:
+    wb = openpyxl.load_workbook(caminho, read_only=True)
+    try:
+        presentes = set(wb.sheetnames)
+    finally:
+        wb.close()
+    faltando = [a for a in ABAS_FONTE if a not in presentes]
+    faltando += [a for a in ABAS_TRABALHO if a not in presentes]
+    return faltando
+
+
+def carrega_fontes(caminho, filiais_estoque=None) -> Fontes:
+    """Lê Estoque, Vendas, Producao, Preco e Produtos da planilha geral.
+
+    `filiais_estoque` restringe quais filiais entram na soma de estoque.
+    None significa todas as que existirem no arquivo.
+    """
+    wb = openpyxl.load_workbook(caminho, data_only=True)
+    f = Fontes()
+
+    est = wb["Estoque"]
+    f.estoque = defaultdict(lambda: defaultdict(int))
+    vistas = []
+    for r in range(2, est.max_row + 1):
+        cod = norm_codigo(est.cell(r, 2).value)
+        if not cod:
+            continue
+        filial = (est.cell(r, 1).value or "").strip()
+        if filial and filial not in vistas:
+            vistas.append(filial)
+        if filiais_estoque is not None and filial not in filiais_estoque:
+            continue
+        cor = nrm(est.cell(r, 5).value)
+        qtd = est.cell(r, 7).value or 0
+        f.estoque[cod][cor] += qtd
+        f.linhas_estoque.append(
+            (cod, cor, norm_codigo(est.cell(r, 4).value), norm_codigo(est.cell(r, 6).value), qtd)
+        )
+    f.filiais_estoque = vistas
+
+    ven = wb["Vendas"]
+    f.vendas = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    filiais_v = []
+    for r in range(2, ven.max_row + 1):
+        cod = norm_codigo(ven.cell(r, 2).value)
+        if not cod:
+            continue
+        filial = (ven.cell(r, 1).value or "").strip().upper()
+        if filial and filial not in filiais_v:
+            filiais_v.append(filial)
+        f.vendas[cod][nrm(ven.cell(r, 5).value)][filial] += ven.cell(r, 7).value or 0
+    f.filiais_vendas = filiais_v
+
+    pro = wb["Producao"]
+    f.producao = defaultdict(lambda: defaultdict(int))
+    for r in range(2, pro.max_row + 1):
+        cod = norm_codigo(pro.cell(r, 1).value)
+        if cod:
+            f.producao[cod][nrm(pro.cell(r, 3).value)] += pro.cell(r, 5).value or 0
+
+    pre = wb["Preco"]
+    for r in range(2, pre.max_row + 1):
+        cod = norm_codigo(pre.cell(r, 1).value)
+        codcor = norm_codigo(pre.cell(r, 3).value)
+        tam = norm_codigo(pre.cell(r, 5).value)
+        valor = pre.cell(r, 6).value
+        f.preco[(cod, codcor, tam)] = valor
+        f.preco_cor.setdefault((cod, codcor), valor)
+        f.preco_produto.setdefault(cod, valor)
+
+    prd = wb["Produtos"]
+    for r in range(2, prd.max_row + 1):
+        f.produtos.append({
+            "codigo": norm_codigo(prd.cell(r, 1).value),
+            "descricao": prd.cell(r, 3).value,
+            "colecao": prd.cell(r, 8).value,
+            "divisao": prd.cell(r, 12).value,
+        })
+
+    wb.close()
+    return f
+
+
+# --------------------------------------------------------------------------- #
+# Estrutura das abas Masculino / Feminino
+# --------------------------------------------------------------------------- #
+
+CABECALHOS = {
+    "estoque_atual": "D",
+    "estoque_inicial": "J",
+    "consignacao": "E",
+    "vendas_totais": "I",
+    "sellout": "K",
+}
+
+
+def mapa_colunas(ws) -> dict:
+    """Descobre as colunas pelo texto do cabeçalho (linha 3).
+
+    Necessário porque a aba Feminino dos Clássicos tem uma coluna
+    "Curadobia" a mais, deslocando tudo à direita dela.
+    """
+    m = {}
+    for c in range(1, 30):
+        t = texto(ws.cell(3, c).value)
+        if not isinstance(t, str):
+            continue
+        k = nrm(t)
+        if k.startswith("ESTOQUE ATUAL"):
+            m["D"] = c
+        elif k.startswith("ESTOQUE INICIAL"):
+            m["J"] = c
+        elif k.startswith("CONSIGNA"):
+            m["E"] = c
+        elif k == "VENDAS TOTAIS":
+            m["I"] = c
+        elif k == "VENDAS JARDINS":
+            m["JARDINS"] = c
+        elif k == "VENDAS IGUATEMI":
+            m["IGUATEMI"] = c
+        elif k == "VENDAS SITE":
+            m["SITE"] = c
+        elif k.startswith("SELLOUT"):
+            m["K"] = c
+    return m
+
+
+def blocos_de(ws) -> list[dict]:
+    """Blocos de coleção: cabeçalho, primeira e última linha de produto, subtotal."""
+    blocos = []
+    for r in range(3, ws.max_row + 1):
+        if ws.cell(r, 2).value != "Código":
+            continue
+        ini = r + 1
+        fim = r
+        rr = ini
+        while rr <= ws.max_row and ws.cell(rr, 2).value not in (None, "Código"):
+            fim = rr
+            rr += 1
+        blocos.append({
+            "hdr": r,
+            "titulo": texto(ws.cell(r, 3).value),
+            "ini": ini,
+            "fim": fim,
+            "sub": rr,
+            "colecao": colecao_do_bloco(texto(ws.cell(r, 3).value)),
+        })
+    return blocos
+
+
+def linhas_de_produto(ws, blocos) -> list[tuple[int, str, dict]]:
+    linhas = []
+    for b in blocos:
+        for r in range(b["ini"], b["fim"] + 1):
+            cod = ws.cell(r, 2).value
+            if cod in (None, "Código"):
+                continue
+            linhas.append((r, norm_codigo(cod), b))
+    return linhas

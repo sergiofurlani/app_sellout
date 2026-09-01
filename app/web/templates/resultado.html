@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block subtitulo %}Passo 3 de 3 — pronto{% endblock %}
+{% block conteudo %}
+
+<div class="painel">
+  <h2>Rodada {{ decisoes.data_sellout }}</h2>
+  <p class="ajuda">Os arquivos ficam disponíveis por algumas horas. Baixe agora.</p>
+  <div class="baixar">
+    <a href="/baixar/{{ job }}/geral">sellout geral atualizado.xlsx <span>planilha Geral</span></a>
+    <a href="/baixar/{{ job }}/classicos">Sellout Clássicos atualizado.xlsx <span>planilha Clássicos</span></a>
+    <a href="/baixar/{{ job }}/relatorio">relatorio de conferencia.xlsx <span>o que foi feito e o que ficou pendente</span></a>
+  </div>
+</div>
+
+<div class="painel">
+  <h2>O que mudou</h2>
+  <ul class="marcadores">
+    <li><strong>{{ rel.alterados }}</strong>linhas atualizadas</li>
+    <li><strong>{{ rel.novos_inseridos|length }}</strong>produtos novos</li>
+    <li><strong>{{ rel.por_cor|length }}</strong>linhas divididas por cor</li>
+    <li><strong>{{ rel.producao|length }}</strong>lançamentos de produção</li>
+    <li><strong>{{ rel.formulas_ajustadas|length }}</strong>fórmulas reajustadas</li>
+  </ul>
+</div>
+
+<div class="painel">
+  <h2>Nível de Estoque</h2>
+  <table>
+    <tr><th>Planilha</th><th>Aba</th><th class="num">Peças</th><th class="num">Valor</th><th class="num">Preço médio</th></tr>
+    {% for planilha, abas in rel.nivel.items() %}{% for aba, d in abas.items() %}
+    <tr>
+      <td>{{ planilha }}</td><td>{{ aba }}</td>
+      <td class="num">{{ '{:,}'.format(d.pecas).replace(',', '.') }}</td>
+      <td class="num">R$ {{ '{:,.0f}'.format(d.valor).replace(',', '.') }}</td>
+      <td class="num">R$ {{ '{:,.0f}'.format(d.valor / d.pecas if d.pecas else 0).replace(',', '.') }}</td>
+    </tr>
+    {% endfor %}{% endfor %}
+  </table>
+</div>
+
+{% set pendentes = rel.mantidos|length + rel.pendentes|length + rel.nao_encontrados|length
+                   + rel.cores_sem_destino|length + rel.producao_nao_aplicada|length
+                   + rel.producao_sem_destino|length %}
+{% if pendentes %}
+<div class="painel">
+  <h2>Ficou para conferir <span class="chip">{{ pendentes }}</span></h2>
+  <p class="ajuda">Detalhe linha a linha na aba Pendências do relatório.</p>
+  <table>
+    <tr><th>Situação</th><th class="num">Qtde</th></tr>
+    {% if rel.mantidos %}<tr><td>Linhas mantidas sem alteração por decisão sua</td><td class="num">{{ rel.mantidos|length }}</td></tr>{% endif %}
+    {% if rel.pendentes %}<tr><td>Linhas marcadas como REVISAR</td><td class="num">{{ rel.pendentes|length }}</td></tr>{% endif %}
+    {% if rel.nao_encontrados %}<tr><td>Códigos sem nenhum dado nas abas de origem</td><td class="num">{{ rel.nao_encontrados|length }}</td></tr>{% endif %}
+    {% if rel.cores_sem_destino %}<tr><td>Cores sem linha de destino</td><td class="num">{{ rel.cores_sem_destino|length }}</td></tr>{% endif %}
+    {% if rel.producao_nao_aplicada %}<tr><td>Produção não somada por falta de estoque</td><td class="num">{{ rel.producao_nao_aplicada|sum(attribute='qtde') }} pç</td></tr>{% endif %}
+    {% if rel.producao_sem_destino %}<tr><td>Produção de produtos fora desta rodada</td><td class="num">{{ rel.producao_sem_destino|sum(attribute='qtde') }} pç</td></tr>{% endif %}
+    {% if rel.sem_preco %}<tr><td>Itens sem preço exato na aba Preco</td><td class="num">{{ rel.sem_preco|length }}</td></tr>{% endif %}
+  </table>
+</div>
+{% endif %}
+
+<div class="acoes">
+  <a class="voltar" href="/">Fazer outra rodada</a>
+</div>
+
+{% endblock %}
