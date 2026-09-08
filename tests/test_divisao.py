@@ -2,11 +2,15 @@ from sellout.core import divisao
 
 
 class FontesFake:
-    def __init__(self, cores):
+    def __init__(self, cores, conhecidas=None):
         self._cores = set(cores)
+        self._conhecidas = set(conhecidas if conhecidas is not None else cores)
 
     def cores_do_codigo(self, _codigo):
         return set(self._cores)
+
+    def eh_cor_conhecida(self, nome):
+        return nome in self._conhecidas
 
 
 def test_vermelho_divide_e_linha_sem_vermelho_leva_o_resto():
@@ -61,3 +65,21 @@ def test_linha_unica_sem_vermelho_leva_tudo():
     fontes = FontesFake({"PRETO"})
     atribuicao, _s, motivo = divisao.resolver("999", [10], {10: ""}, fontes)
     assert motivo is None and atribuicao[10] is None
+
+
+def test_cor_sem_saldo_na_semana_nao_trava():
+    # ROXO existe no cadastro, mas zerou o estoque deste código nesta semana.
+    fontes = FontesFake({"AZUL BIC", "VERDE CL", "PRETO"},
+                        conhecidas={"AZUL BIC", "VERDE CL", "PRETO", "ROXO"})
+    atribuicao, _s, motivo = divisao.resolver(
+        "217035", [18, 86], {18: "ROXO, AZUL BIC, VERDE CL", 86: ""}, fontes)
+    assert motivo is None
+    assert atribuicao[18] == {"AZUL BIC", "VERDE CL"}
+    assert atribuicao[86] == {"PRETO"}
+
+
+def test_texto_que_nao_e_cor_continua_travando():
+    fontes = FontesFake({"PRETO", "BEGE"})
+    _a, _s, motivo = divisao.resolver(
+        "212006", [115, 116], {115: "", 116: "CORES SS25"}, fontes)
+    assert motivo and "CORES SS25" in motivo

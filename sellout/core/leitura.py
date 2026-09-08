@@ -8,8 +8,9 @@ from dataclasses import dataclass, field
 
 import openpyxl
 from openpyxl.cell.rich_text import CellRichText
+from openpyxl.utils import get_column_letter
 
-from .cores import nrm
+from .cores import match, nrm
 
 VERMELHOS = {"FFFF0000", "00FF0000"}
 ABAS_TRABALHO = ("Masculino", "Feminino")
@@ -91,6 +92,17 @@ class Fontes:
     filiais_estoque: list = field(default_factory=list)
     filiais_vendas: list = field(default_factory=list)
     valores_ignorados: list = field(default_factory=list)
+    avisos: list = field(default_factory=list)
+    colunas_usadas: dict = field(default_factory=dict)
+    cores_conhecidas: set = field(default_factory=set)
+
+    def eh_cor_conhecida(self, nome) -> bool:
+        """O nome aparece como cor em alguma aba de origem?
+
+        Serve para separar "cor que zerou o estoque nesta semana" de "texto que
+        não é cor": a primeira só contribui zero, a segunda trava a divisão.
+        """
+        return bool(match(nome, self.cores_conhecidas))
 
     def cores_do_codigo(self, codigo) -> set:
         disp = set(self.estoque.get(codigo, {}))
@@ -154,6 +166,120 @@ COLUNAS_PRODUTOS = [
 ]
 
 
+def amostra_da_coluna(ws, coluna, quantas=4, ate=400):
+    """Primeiros valores preenchidos, para mostrar na tela de conferência."""
+    vistos = []
+    for r in range(2, min(ws.max_row, ate) + 1):
+        v = ws.cell(r, coluna).value
+        if v is not None and str(v).strip():
+            vistos.append(str(v)[:18])
+            if len(vistos) >= quantas:
+                break
+    return vistos
+
+
+def fracao_numerica(ws, coluna, ate=300):
+    """Quanto da coluna é número — usado para achar a coluna de quantidade."""
+    total = numericos = 0
+    for r in range(2, min(ws.max_row, ate) + 1):
+        v = ws.cell(r, coluna).value
+        if v is None or not str(v).strip():
+            continue
+        total += 1
+        if num(v) is not None:
+            numericos += 1
+    return numericos / total if total else 0.0
+
+
+def colunas_com_dado(ws, ate=200) -> int:
+    """Até onde as linhas de dados vão, independentemente do cabeçalho."""
+    ultima = 0
+    for r in range(2, min(ws.max_row, ate) + 1):
+        for c in range(ws.max_column, ultima, -1):
+            v = ws.cell(r, c).value
+            if v is not None and str(v).strip():
+                ultima = max(ultima, c)
+                break
+    return ultima
+
+
+def cabecalho_deslocado(ws) -> bool:
+    """Coluna inserida sem mexer na linha 1 deixa dados além do último rótulo."""
+    rotulos = max((c for c in range(1, ws.max_column + 1)
+                   if ws.cell(1, c).value not in (None, "")), default=0)
+    return colunas_com_dado(ws) > rotulos
+
+
+def ajusta_coluna_numerica(ws, achadas, campo, rotulo, avisos):
+    """Confere se a coluna do número é mesmo numérica; se não, procura à direita.
+
+    É o que salva a rodada quando inserem uma coluna no meio do relatório de
+    origem sem mexer no cabeçalho: o rótulo "ESTOQUE ATUAL" acaba em cima do
+    tamanho, e a quantidade fica na coluna seguinte, sem rótulo nenhum.
+    """
+    col = achadas.get(campo)
+    if not col:
+        return
+    if fracao_numerica(ws, col) >= 0.9:
+        return
+    for candidata in range(col + 1, colunas_com_dado(ws) + 1):
+        if fracao_numerica(ws, candidata) >= 0.95:
+            avisos.append(
+                "Na aba %s o rótulo \"%s\" está na coluna %s, que não tem números "
+                "(ex.: %s). Usei a coluna %s, que é numérica (ex.: %s). "
+                "Provavelmente inseriram uma coluna sem ajustar o cabeçalho."
+                % (ws.title, rotulo, get_column_letter(col),
+                   ", ".join(amostra_da_coluna(ws, col, 3)) or "vazia",
+                   get_column_letter(candidata),
+                   ", ".join(amostra_da_coluna(ws, candidata, 3)) or "vazia"))
+            achadas[campo] = candidata
+            return
+    avisos.append(
+        "Na aba %s não encontrei uma coluna numérica para %s; ela entra como zero."
+        % (ws.title, rotulo))
+
+
+def valores_da_coluna(ws, coluna, ate=400) -> set:
+    vistos = set()
+    for r in range(2, min(ws.max_row, ate) + 1):
+        v = ws.cell(r, coluna).value
+        if v is not None and str(v).strip():
+            vistos.add(norm_codigo(v))
+    return vistos
+
+
+def ajusta_por_vocabulario(ws, achadas, campo, vocabulario, rotulo, avisos):
+    """Confere a coluna contra os valores que a aba Preco usa para o mesmo campo.
+
+    O cruzamento com o preço é por Código + Código Cor + Tamanho; se o
+    cabeçalho escorregou, o tamanho vira outra coisa e o Nível de Estoque sai
+    errado sem dar erro nenhum. Comparar com o vocabulário conhecido pega isso.
+    """
+    col = achadas.get(campo)
+    if not col or not vocabulario:
+        return
+
+    def cobertura(c):
+        vals = valores_da_coluna(ws, c)
+        return len(vals & vocabulario) / len(vals) if vals else 0.0
+
+    if cobertura(col) >= 0.5:
+        return
+    melhor, nota = None, 0.0
+    for candidata in range(1, colunas_com_dado(ws) + 1):
+        atual = cobertura(candidata)
+        if atual > nota:
+            melhor, nota = candidata, atual
+    if melhor and melhor != col and nota >= 0.8:
+        avisos.append(
+            "Na aba %s o %s estava sendo lido da coluna %s (ex.: %s), que não bate "
+            "com os valores da aba Preco. Usei a coluna %s (ex.: %s)."
+            % (ws.title, rotulo, get_column_letter(col),
+               ", ".join(amostra_da_coluna(ws, col, 3)) or "vazia",
+               get_column_letter(melhor), ", ".join(amostra_da_coluna(ws, melhor, 3))))
+        achadas[campo] = melhor
+
+
 class ColunaAusente(Exception):
     """Cabeçalho obrigatório não encontrado numa aba de origem."""
 
@@ -193,12 +319,17 @@ def abas_faltando(caminho) -> list[str]:
     return faltando
 
 
-def carrega_fontes(caminho, filiais_estoque=None) -> Fontes:
+def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None) -> Fontes:
     """Lê Estoque, Vendas, Producao, Preco e Produtos da planilha geral.
 
     `filiais_estoque` restringe quais filiais entram na soma de estoque.
     None significa todas as que existirem no arquivo.
+
+    `colunas_forcadas` sobrepõe a coluna detectada, no formato
+    {"Estoque:qtde": 8} — é o que a tela de conferência manda quando o
+    usuário corrige a coluna do número.
     """
+    colunas_forcadas = colunas_forcadas or {}
     wb = openpyxl.load_workbook(caminho, data_only=True)
     f = Fontes()
 
@@ -212,8 +343,49 @@ def carrega_fontes(caminho, filiais_estoque=None) -> Fontes:
             return 0
         return valor
 
+    def prepara(ws, especificacao, campo_num, rotulo_num):
+        achadas = colunas_da_fonte(ws, especificacao)
+        if cabecalho_deslocado(ws):
+            f.avisos.append(
+                "A aba %s tem dados além do último rótulo da linha 1 — sinal de "
+                "coluna inserida sem ajustar o cabeçalho." % ws.title)
+        ajusta_coluna_numerica(ws, achadas, campo_num, rotulo_num, f.avisos)
+        forcada = colunas_forcadas.get("%s:%s" % (ws.title, campo_num))
+        if forcada:
+            achadas[campo_num] = int(forcada)
+        f.colunas_usadas[ws.title] = {
+            "campo": campo_num,
+            "rotulo": rotulo_num,
+            "coluna": achadas[campo_num],
+            "escolhida": bool(forcada),
+            "opcoes": [
+                {"coluna": i,
+                 "letra": get_column_letter(i),
+                 "cabecalho": (texto(ws.cell(1, i).value) or "(sem cabeçalho)"),
+                 "amostra": ", ".join(amostra_da_coluna(ws, i, 3)) or "vazia"}
+                for i in range(1, colunas_com_dado(ws) + 1)
+            ],
+        }
+        return achadas
+
+    pre = wb["Preco"]
+    c = prepara(pre, COLUNAS_PRECO, "preco", "Preco")
+    for r in range(2, pre.max_row + 1):
+        cod = norm_codigo(pre.cell(r, c["codigo"]).value)
+        codcor = norm_codigo(pre.cell(r, c["codigo_cor"]).value)
+        tam = norm_codigo(pre.cell(r, c["tamanho"]).value)
+        valor = qtd_de(pre, "Preco", r, c["preco"], "Preco")
+        f.preco[(cod, codcor, tam)] = valor
+        f.preco_cor.setdefault((cod, codcor), valor)
+        f.preco_produto.setdefault(cod, valor)
+
+    vocab_tamanho = {t for (_c, _cc, t) in f.preco}
+    vocab_codigo_cor = {cc for (_c, cc, _t) in f.preco}
+
     est = wb["Estoque"]
-    c = colunas_da_fonte(est, COLUNAS_ESTOQUE)
+    c = prepara(est, COLUNAS_ESTOQUE, "qtde", "ESTOQUE ATUAL")
+    ajusta_por_vocabulario(est, c, "tamanho", vocab_tamanho, "tamanho", f.avisos)
+    ajusta_por_vocabulario(est, c, "codigo_cor", vocab_codigo_cor, "código da cor", f.avisos)
     f.estoque = defaultdict(lambda: defaultdict(int))
     vistas = []
     for r in range(2, est.max_row + 1):
@@ -237,7 +409,7 @@ def carrega_fontes(caminho, filiais_estoque=None) -> Fontes:
     f.filiais_estoque = vistas
 
     ven = wb["Vendas"]
-    c = colunas_da_fonte(ven, COLUNAS_VENDAS)
+    c = prepara(ven, COLUNAS_VENDAS, "qtde", "Qtde")
     f.vendas = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     filiais_v = []
     for r in range(2, ven.max_row + 1):
@@ -252,24 +424,13 @@ def carrega_fontes(caminho, filiais_estoque=None) -> Fontes:
     f.filiais_vendas = filiais_v
 
     pro = wb["Producao"]
-    c = colunas_da_fonte(pro, COLUNAS_PRODUCAO)
+    c = prepara(pro, COLUNAS_PRODUCAO, "qtde", "Quantidade")
     f.producao = defaultdict(lambda: defaultdict(int))
     for r in range(2, pro.max_row + 1):
         cod = norm_codigo(pro.cell(r, c["codigo"]).value)
         if cod:
             f.producao[cod][nrm(pro.cell(r, c["cor"]).value)] += \
                 qtd_de(pro, "Producao", r, c["qtde"], "Quantidade")
-
-    pre = wb["Preco"]
-    c = colunas_da_fonte(pre, COLUNAS_PRECO)
-    for r in range(2, pre.max_row + 1):
-        cod = norm_codigo(pre.cell(r, c["codigo"]).value)
-        codcor = norm_codigo(pre.cell(r, c["codigo_cor"]).value)
-        tam = norm_codigo(pre.cell(r, c["tamanho"]).value)
-        valor = qtd_de(pre, "Preco", r, c["preco"], "Preco")
-        f.preco[(cod, codcor, tam)] = valor
-        f.preco_cor.setdefault((cod, codcor), valor)
-        f.preco_produto.setdefault(cod, valor)
 
     prd = wb["Produtos"]
     c = colunas_da_fonte(prd, COLUNAS_PRODUTOS)
@@ -280,6 +441,11 @@ def carrega_fontes(caminho, filiais_estoque=None) -> Fontes:
             "colecao": prd.cell(r, c["colecao"]).value,
             "divisao": prd.cell(r, c["divisao"]).value,
         })
+
+    for cores in list(f.estoque.values()) + list(f.producao.values()):
+        f.cores_conhecidas |= {c for c in cores if c}
+    for cores in f.vendas.values():
+        f.cores_conhecidas |= {c for c in cores if c}
 
     wb.close()
     return f

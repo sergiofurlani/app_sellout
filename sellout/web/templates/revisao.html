@@ -6,6 +6,35 @@
       onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Processando…'">
 <input type="hidden" name="job" value="{{ job }}">
 
+{% if a.avisos %}
+<div class="painel alerta">
+  <h2>Atenção nas abas de origem <span class="chip">{{ a.avisos|length }}</span></h2>
+  <p class="ajuda">O layout das abas de origem mudou. Ajustei sozinho, mas confira abaixo
+    de onde cada número está sendo lido antes de gerar.</p>
+  <ul class="avisos">
+    {% for v in a.avisos %}<li>{{ v }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% if a.colunas_usadas %}
+<div class="painel">
+  <h2>De onde vêm os números</h2>
+  <p class="ajuda">Uma linha por aba de origem. Se alguma estiver apontando para a coluna errada,
+    corrija aqui — a amostra ao lado mostra o conteúdo real de cada coluna.</p>
+  {% for aba, d in a.colunas_usadas.items() %}
+  <label class="campo" for="col-{{ aba }}">{{ aba }} · {{ d.rotulo }}</label>
+  <select id="col-{{ aba }}" name="col:{{ aba }}:{{ d.campo }}">
+    {% for o in d.opcoes %}
+    <option value="{{ o.coluna }}" {% if o.coluna == d.coluna %}selected{% endif %}>
+      {{ o.letra }} — {{ o.cabecalho }} · {{ o.amostra }}
+    </option>
+    {% endfor %}
+  </select>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="painel">
   <h2>Data da rodada</h2>
   <p class="ajuda">Vira o nome da coluna nova de sellout. A coluna da semana passada é congelada ao lado.</p>

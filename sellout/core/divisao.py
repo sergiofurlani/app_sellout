@@ -45,6 +45,7 @@ def resolver(codigo, linhas_do_codigo, vermelhos, fontes, decisao=None):
 
     atribuicao = {}
     tokens_sem_match = []
+    cores_sem_saldo = []
     for r in linhas:
         v = vermelhos.get(r, "")
         if not v:
@@ -56,7 +57,13 @@ def resolver(codigo, linhas_do_codigo, vermelhos, fontes, decisao=None):
         for t in tokens(v):
             achadas = match(t, disponiveis)
             if not achadas:
-                tokens_sem_match.append(t)
+                # Cor conhecida do cadastro que zerou o estoque nesta semana
+                # contribui zero e a linha segue valendo. Só texto que não é
+                # cor de verdade ("CORES SS25") trava a divisão.
+                if fontes.eh_cor_conhecida(t):
+                    cores_sem_saldo.append(t)
+                else:
+                    tokens_sem_match.append(t)
             selecionadas += achadas
         atribuicao[r] = set(selecionadas)
 

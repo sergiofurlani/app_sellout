@@ -57,7 +57,10 @@ class Planilha:
         self.rotulo = rotulo
         self.rich = openpyxl.load_workbook(caminho, rich_text=True)
         self.valores = openpyxl.load_workbook(caminho, data_only=True)
-        self.formulas = openpyxl.load_workbook(caminho, data_only=False)
+        # rich_text=True também na cópia que será salva: sem isso o openpyxl
+        # achata a formatação ao gravar e o vermelho da coluna C se perde —
+        # a divisão por cor pararia de funcionar da segunda rodada em diante.
+        self.formulas = openpyxl.load_workbook(caminho, data_only=False, rich_text=True)
 
     def codigos(self) -> set:
         achados = set()
@@ -151,6 +154,8 @@ def analisar(caminho_geral, caminho_classicos) -> dict:
         "duplicados_resolvidos": resolvidos,
         "novos_candidatos": novos,
         "producao_sem_destino": producao_sem_destino,
+        "avisos": fontes.avisos,
+        "colunas_usadas": fontes.colunas_usadas,
         "valores_ignorados": fontes.valores_ignorados[:50],
         "total_valores_ignorados": len(fontes.valores_ignorados),
         "data_sugerida": rotulo_sellout(),
@@ -163,7 +168,8 @@ def analisar(caminho_geral, caminho_classicos) -> dict:
 
 def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos, decisoes) -> dict:
     filiais = decisoes.get("filiais_estoque") or None
-    fontes = carrega_fontes(caminho_geral, filiais_estoque=filiais)
+    fontes = carrega_fontes(caminho_geral, filiais_estoque=filiais,
+                            colunas_forcadas=decisoes.get("colunas"))
     rotulo_data = decisoes.get("data_sellout") or rotulo_sellout()
     exige_estoque_prod = decisoes.get("producao_exige_estoque", True)
     aprovados = set(decisoes.get("novos") or [])
@@ -174,6 +180,8 @@ def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos, de
         "producao_nao_aplicada": [], "mantidos": [], "pendentes": [],
         "nao_encontrados": [], "sem_cores": [], "cores_sem_destino": [], "sem_preco": [],
         "formulas_ajustadas": [], "nivel": {},
+        "avisos": list(fontes.avisos),
+        "valores_ignorados": fontes.valores_ignorados[:50],
     }
 
     planilhas = [

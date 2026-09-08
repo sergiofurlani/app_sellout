@@ -135,6 +135,10 @@ async def processar(request: Request, job: str = Form(...), data_sellout: str = 
             k[len("dup:"):]: v for k, v in form.items()
             if k.startswith("dup:") and v
         },
+        "colunas": {
+            k[len("col:"):]: v for k, v in form.items()
+            if k.startswith("col:") and v
+        },
     }
     (pasta / "decisoes.json").write_text(json.dumps(decisoes, ensure_ascii=False))
 
