@@ -15,6 +15,7 @@
 
 <div class="painel">
   <h2>Filiais do estoque</h2>
+  {% if a.filiais_estoque %}
   <p class="ajuda">Encontradas na aba Estoque desta semana. Só as marcadas entram na soma do Estoque atual
     e no Nível de Estoque.</p>
   {% for f in a.filiais_estoque %}
@@ -23,7 +24,30 @@
     <span class="rotulo">{{ f }}</span>
   </label>
   {% endfor %}
+  {% else %}
+  <p class="ajuda">A coluna Filial da aba Estoque veio em branco, então não há o que separar:
+    todas as linhas entram na soma do Estoque atual e no Nível de Estoque.</p>
+  {% endif %}
 </div>
+
+{% if a.valores_ignorados %}
+<div class="painel">
+  <h2>Células não numéricas <span class="chip">{{ a.total_valores_ignorados }}</span></h2>
+  <p class="ajuda">Nestas linhas a quantidade ou o preço não é número, então entram como zero.
+    Vale conferir na origem se for muita coisa.</p>
+  <div class="lista-rolagem">
+    <table>
+      <tr><th>Aba</th><th>Linha</th><th>Coluna</th><th>Conteúdo</th></tr>
+      {% for v in a.valores_ignorados %}
+      <tr><td>{{ v.aba }}</td><td>{{ v.linha }}</td><td>{{ v.coluna }}</td><td>{{ v.valor }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  {% if a.total_valores_ignorados > a.valores_ignorados|length %}
+  <p class="ajuda">Mostrando as {{ a.valores_ignorados|length }} primeiras.</p>
+  {% endif %}
+</div>
+{% endif %}
 
 <div class="painel">
   <h2>Regra da produção</h2>

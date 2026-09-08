@@ -151,6 +151,8 @@ def analisar(caminho_geral, caminho_classicos) -> dict:
         "duplicados_resolvidos": resolvidos,
         "novos_candidatos": novos,
         "producao_sem_destino": producao_sem_destino,
+        "valores_ignorados": fontes.valores_ignorados[:50],
+        "total_valores_ignorados": len(fontes.valores_ignorados),
         "data_sugerida": rotulo_sellout(),
     }
 

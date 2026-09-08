@@ -15,6 +15,30 @@ VERMELHOS = {"FFFF0000", "00FF0000"}
 ABAS_TRABALHO = ("Masculino", "Feminino")
 
 
+def num(valor):
+    """Quantidade ou preço vindo de célula que pode estar como texto.
+
+    Devolve o número, 0 para célula vazia, e None quando o conteúdo não é
+    numérico — aí quem chamou registra a linha e segue com zero, em vez de
+    a rodada inteira parar por causa de uma célula.
+    """
+    if valor is None or isinstance(valor, bool):
+        return 0
+    if isinstance(valor, (int, float)):
+        return valor
+    t = str(valor).strip().replace("\xa0", "").replace(" ", "")
+    if not t or t in {"-", "--", "#N/D", "#N/A"}:
+        return 0
+    if "," in t and "." in t:          # 1.234,56 → 1234.56
+        t = t.replace(".", "").replace(",", ".")
+    elif "," in t:                     # 1,5 → 1.5
+        t = t.replace(",", ".")
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
 def norm_codigo(valor):
     """Códigos vêm ora como texto, ora como número. Uniformiza."""
     if valor is None:
@@ -66,6 +90,7 @@ class Fontes:
     produtos: list = field(default_factory=list)
     filiais_estoque: list = field(default_factory=list)
     filiais_vendas: list = field(default_factory=list)
+    valores_ignorados: list = field(default_factory=list)
 
     def cores_do_codigo(self, codigo) -> set:
         disp = set(self.estoque.get(codigo, {}))
@@ -90,6 +115,72 @@ class Fontes:
 
 ABAS_FONTE = ("Estoque", "Vendas", "Producao", "Preco", "Produtos")
 
+# Colunas das abas de origem, procuradas pelo cabeçalho da linha 1. Cada entrada
+# é (nome interno, lista de cabeçalhos aceitos, posição de reserva, obrigatória).
+# O cabeçalho manda; a posição só entra se o texto não for encontrado.
+COLUNAS_ESTOQUE = [
+    ("filial", ["FILIAL"], 1, False),
+    ("codigo", ["CODIGO", "COD"], 2, True),
+    ("codigo_cor", ["CODIGO COR", "COD COR"], 4, True),
+    ("cor", ["COR"], 5, True),
+    ("tamanho", ["TAMANHO", "TAM"], 6, True),
+    ("qtde", ["ESTOQUE ATUAL", "ESTOQUE", "QTDE", "QUANTIDADE", "SALDO"], 7, True),
+]
+COLUNAS_VENDAS = [
+    ("filial", ["FILIAL"], 1, False),
+    ("codigo", ["CODIGO", "COD"], 2, True),
+    ("codigo_cor", ["CODIGO COR", "COD COR"], 4, False),
+    ("cor", ["COR"], 5, True),
+    ("tamanho", ["TAM", "TAMANHO"], 6, False),
+    ("qtde", ["QTDE", "QUANTIDADE", "QTD"], 7, True),
+]
+COLUNAS_PRODUCAO = [
+    ("codigo", ["CODIGO", "COD"], 1, True),
+    ("cor", ["COR"], 3, True),
+    ("tamanho", ["TAMANHO", "TAM"], 4, False),
+    ("qtde", ["QUANTIDADE", "QTDE", "QTD"], 5, True),
+]
+COLUNAS_PRECO = [
+    ("codigo", ["PRODUTO", "CODIGO", "COD"], 1, True),
+    ("codigo_cor", ["CODIGO COR", "COD COR"], 3, True),
+    ("tamanho", ["TAMANHO", "TAM"], 5, True),
+    ("preco", ["PRECO", "PRECO VENDA", "VALOR"], 6, True),
+]
+COLUNAS_PRODUTOS = [
+    ("codigo", ["CODIGO", "COD"], 1, True),
+    ("descricao", ["DESCRICAO"], 3, True),
+    ("colecao", ["COL", "COLECAO"], 8, True),
+    ("divisao", ["DIVISAO", "DEPARTAMENTO"], 12, True),
+]
+
+
+class ColunaAusente(Exception):
+    """Cabeçalho obrigatório não encontrado numa aba de origem."""
+
+
+def colunas_da_fonte(ws, especificacao) -> dict:
+    """Casa os cabeçalhos da linha 1 com os nomes internos das colunas."""
+    cabecalhos = {}
+    for c in range(1, min(ws.max_column, 40) + 1):
+        titulo = nrm(texto(ws.cell(1, c).value))
+        if titulo and titulo not in cabecalhos:
+            cabecalhos[titulo] = c
+
+    achadas = {}
+    for nome, aceitos, reserva, obrigatoria in especificacao:
+        coluna = next((cabecalhos[a] for a in aceitos if a in cabecalhos), None)
+        if coluna is None:
+            # Cabeçalho renomeado: aceita quem começa com o texto esperado.
+            coluna = next((pos for a in aceitos
+                           for titulo, pos in cabecalhos.items() if titulo.startswith(a)), None)
+        if coluna is None and reserva <= ws.max_column:
+            coluna = reserva
+        if coluna is None and obrigatoria:
+            raise ColunaAusente(
+                "A aba %s está sem a coluna %s." % (ws.title, aceitos[0]))
+        achadas[nome] = coluna
+    return achadas
+
 
 def abas_faltando(caminho) -> list[str]:
     wb = openpyxl.load_workbook(caminho, read_only=True)
@@ -111,63 +202,83 @@ def carrega_fontes(caminho, filiais_estoque=None) -> Fontes:
     wb = openpyxl.load_workbook(caminho, data_only=True)
     f = Fontes()
 
+    def qtd_de(ws, aba, linha, coluna, rotulo):
+        """Lê um número tolerando texto; registra a célula quando não dá."""
+        bruto = ws.cell(linha, coluna).value
+        valor = num(bruto)
+        if valor is None:
+            f.valores_ignorados.append(
+                {"aba": aba, "linha": linha, "coluna": rotulo, "valor": str(bruto)[:40]})
+            return 0
+        return valor
+
     est = wb["Estoque"]
+    c = colunas_da_fonte(est, COLUNAS_ESTOQUE)
     f.estoque = defaultdict(lambda: defaultdict(int))
     vistas = []
     for r in range(2, est.max_row + 1):
-        cod = norm_codigo(est.cell(r, 2).value)
+        cod = norm_codigo(est.cell(r, c["codigo"]).value)
         if not cod:
             continue
-        filial = (est.cell(r, 1).value or "").strip()
+        filial = (est.cell(r, c["filial"]).value or "").strip() if c["filial"] else ""
         if filial and filial not in vistas:
             vistas.append(filial)
-        if filiais_estoque is not None and filial not in filiais_estoque:
+        if filiais_estoque and filial not in filiais_estoque:
             continue
-        cor = nrm(est.cell(r, 5).value)
-        qtd = est.cell(r, 7).value or 0
+        cor = nrm(est.cell(r, c["cor"]).value)
+        qtd = qtd_de(est, "Estoque", r, c["qtde"], "ESTOQUE ATUAL")
         f.estoque[cod][cor] += qtd
-        f.linhas_estoque.append(
-            (cod, cor, norm_codigo(est.cell(r, 4).value), norm_codigo(est.cell(r, 6).value), qtd)
-        )
+        f.linhas_estoque.append((
+            cod, cor,
+            norm_codigo(est.cell(r, c["codigo_cor"]).value),
+            norm_codigo(est.cell(r, c["tamanho"]).value),
+            qtd,
+        ))
     f.filiais_estoque = vistas
 
     ven = wb["Vendas"]
+    c = colunas_da_fonte(ven, COLUNAS_VENDAS)
     f.vendas = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
     filiais_v = []
     for r in range(2, ven.max_row + 1):
-        cod = norm_codigo(ven.cell(r, 2).value)
+        cod = norm_codigo(ven.cell(r, c["codigo"]).value)
         if not cod:
             continue
-        filial = (ven.cell(r, 1).value or "").strip().upper()
+        filial = (ven.cell(r, c["filial"]).value or "").strip().upper() if c["filial"] else ""
         if filial and filial not in filiais_v:
             filiais_v.append(filial)
-        f.vendas[cod][nrm(ven.cell(r, 5).value)][filial] += ven.cell(r, 7).value or 0
+        f.vendas[cod][nrm(ven.cell(r, c["cor"]).value)][filial] += \
+            qtd_de(ven, "Vendas", r, c["qtde"], "Qtde")
     f.filiais_vendas = filiais_v
 
     pro = wb["Producao"]
+    c = colunas_da_fonte(pro, COLUNAS_PRODUCAO)
     f.producao = defaultdict(lambda: defaultdict(int))
     for r in range(2, pro.max_row + 1):
-        cod = norm_codigo(pro.cell(r, 1).value)
+        cod = norm_codigo(pro.cell(r, c["codigo"]).value)
         if cod:
-            f.producao[cod][nrm(pro.cell(r, 3).value)] += pro.cell(r, 5).value or 0
+            f.producao[cod][nrm(pro.cell(r, c["cor"]).value)] += \
+                qtd_de(pro, "Producao", r, c["qtde"], "Quantidade")
 
     pre = wb["Preco"]
+    c = colunas_da_fonte(pre, COLUNAS_PRECO)
     for r in range(2, pre.max_row + 1):
-        cod = norm_codigo(pre.cell(r, 1).value)
-        codcor = norm_codigo(pre.cell(r, 3).value)
-        tam = norm_codigo(pre.cell(r, 5).value)
-        valor = pre.cell(r, 6).value
+        cod = norm_codigo(pre.cell(r, c["codigo"]).value)
+        codcor = norm_codigo(pre.cell(r, c["codigo_cor"]).value)
+        tam = norm_codigo(pre.cell(r, c["tamanho"]).value)
+        valor = qtd_de(pre, "Preco", r, c["preco"], "Preco")
         f.preco[(cod, codcor, tam)] = valor
         f.preco_cor.setdefault((cod, codcor), valor)
         f.preco_produto.setdefault(cod, valor)
 
     prd = wb["Produtos"]
+    c = colunas_da_fonte(prd, COLUNAS_PRODUTOS)
     for r in range(2, prd.max_row + 1):
         f.produtos.append({
-            "codigo": norm_codigo(prd.cell(r, 1).value),
-            "descricao": prd.cell(r, 3).value,
-            "colecao": prd.cell(r, 8).value,
-            "divisao": prd.cell(r, 12).value,
+            "codigo": norm_codigo(prd.cell(r, c["codigo"]).value),
+            "descricao": prd.cell(r, c["descricao"]).value,
+            "colecao": prd.cell(r, c["colecao"]).value,
+            "divisao": prd.cell(r, c["divisao"]).value,
         })
 
     wb.close()

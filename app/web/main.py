@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import time
@@ -15,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ..core import motor, relatorio
-from ..core.leitura import abas_faltando
+from ..core.leitura import ColunaAusente, abas_faltando
 
 BASE = Path(__file__).parent
 TRABALHO = Path(os.environ.get("SELLOUT_WORKDIR", "/tmp/sellout-jobs"))
@@ -97,10 +98,19 @@ async def analisar(request: Request, geral: UploadFile, classicos: UploadFile):
 
     try:
         analise = motor.analisar(str(caminho_geral), str(caminho_clas))
+    except ColunaAusente as e:
+        return templates.TemplateResponse(
+            request, "index.html", {"erro": str(e)}, status_code=400)
     except KeyError as e:
         return templates.TemplateResponse(
             request, "index.html",
             {"erro": "Não encontrei a aba %s. Confira se os arquivos foram trocados de lugar." % e},
+            status_code=400)
+    except Exception as e:  # o erro precisa chegar na tela, não só no log
+        logging.exception("falha ao analisar as planilhas")
+        return templates.TemplateResponse(
+            request, "index.html",
+            {"erro": "Não consegui ler as planilhas: %s: %s" % (type(e).__name__, e)},
             status_code=400)
 
     (pasta / "analise.json").write_text(json.dumps(analise, ensure_ascii=False, default=str))
@@ -128,11 +138,18 @@ async def processar(request: Request, job: str = Form(...), data_sellout: str = 
     }
     (pasta / "decisoes.json").write_text(json.dumps(decisoes, ensure_ascii=False))
 
-    rel = motor.processar(
-        str(pasta / "geral.xlsx"), str(pasta / "classicos.xlsx"),
-        str(pasta / ARQUIVOS["geral"]), str(pasta / ARQUIVOS["classicos"]),
-        decisoes,
-    )
+    try:
+        rel = motor.processar(
+            str(pasta / "geral.xlsx"), str(pasta / "classicos.xlsx"),
+            str(pasta / ARQUIVOS["geral"]), str(pasta / ARQUIVOS["classicos"]),
+            decisoes,
+        )
+    except Exception as e:
+        logging.exception("falha ao processar a rodada")
+        return templates.TemplateResponse(
+            request, "index.html",
+            {"erro": "Falhou ao gerar as planilhas: %s: %s" % (type(e).__name__, e)},
+            status_code=500)
     relatorio.gerar(rel, str(pasta / ARQUIVOS["relatorio"]))
     (pasta / "relatorio.json").write_text(json.dumps(rel, ensure_ascii=False, default=str))
 
