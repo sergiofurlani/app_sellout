@@ -43,14 +43,14 @@ Ao final sai também um **relatório de conferência** com o que foi feito e o q
 
 ```bash
 pip install -r requirements.txt
-uvicorn app.web.main:app --reload
+uvicorn sellout.web.main:app --reload
 ```
 
 Pelo terminal, sem subir o app:
 
 ```bash
-python -m app.cli "sellout geral.xlsx" "Sellout Clássicos.xlsx" -s saida/
-python -m app.cli geral.xlsx classicos.xlsx --so-analisar   # só o diagnóstico, em json
+python -m sellout.cli "sellout geral.xlsx" "Sellout Clássicos.xlsx" -s saida/
+python -m sellout.cli geral.xlsx classicos.xlsx --so-analisar   # só o diagnóstico, em json
 ```
 
 Testes:
@@ -78,11 +78,11 @@ não há banco de dados nem persistência entre rodadas.
 ## Organização
 
 ```
-app/core/cores.py      normalização e casamento de nomes de cor
-app/core/leitura.py    leitura das abas de origem e da estrutura de blocos
-app/core/divisao.py    divisão de um código entre linhas pelo texto em vermelho
-app/core/motor.py      análise e processamento da rodada
-app/core/relatorio.py  relatório de conferência
-app/web/               app FastAPI (3 telas)
-app/cli.py             execução pelo terminal
+sellout/core/cores.py      normalização e casamento de nomes de cor
+sellout/core/leitura.py    leitura das abas de origem e da estrutura de blocos
+sellout/core/divisao.py    divisão de um código entre linhas pelo texto em vermelho
+sellout/core/motor.py      análise e processamento da rodada
+sellout/core/relatorio.py  relatório de conferência
+sellout/web/               app FastAPI (3 telas)
+sellout/cli.py             execução pelo terminal
 ```

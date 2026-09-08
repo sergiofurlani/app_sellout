@@ -1,4 +1,4 @@
-from app.core import divisao
+from sellout.core import divisao
 
 
 class FontesFake:

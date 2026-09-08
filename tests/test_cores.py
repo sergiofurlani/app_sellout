@@ -1,4 +1,4 @@
-from app.core.cores import eh_resto, match, nrm, tokens
+from sellout.core.cores import eh_resto, match, nrm, tokens
 
 
 def test_nrm_tira_acento_e_pontuacao():

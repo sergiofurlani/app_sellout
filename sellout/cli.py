@@ -1,6 +1,6 @@
 """Execução da rodada pelo terminal, sem subir o app.
 
-    python -m app.cli "sellout geral.xlsx" "Sellout Clássicos.xlsx" -s saida/
+    python -m sellout.cli "sellout geral.xlsx" "Sellout Clássicos.xlsx" -s saida/
 
 Sem `--decisoes`, usa os padrões: todas as filiais do estoque, produção só
 com estoque, produtos novos com estoque e códigos duplicados sem divisão

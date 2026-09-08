@@ -1,4 +1,4 @@
-from app.core.leitura import ColunaAusente, colunas_da_fonte, num
+from sellout.core.leitura import ColunaAusente, colunas_da_fonte, num
 import openpyxl
 import pytest
 
