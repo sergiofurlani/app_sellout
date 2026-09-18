@@ -112,8 +112,9 @@ com data e origem.
 **Por quê:** decisão do usuário. É o único dado do processo que não vem do ERP —
 é conhecimento do negócio que mora na planilha.
 
-**Em aberto:** o saldo de abertura existe por produto, não por cor. Ver a seção
-"Pontos em aberto" em `roteiro.md`.
+**Revisto em 18/09 (ver D13): o Estoque inicial provavelmente não precisa ser
+mantido na mão.** A entrada no estoque das lojas é a transferência da ELENA ES
+para elas, e isso está no MN, com data, produto, cor e tamanho.
 
 ## D11 · A linha comercial é dado nosso
 
@@ -135,15 +136,61 @@ fonte**.
 
 | Fonte | Filiais |
 |---|---|
-| Estoque | só lojas físicas — Jardins e Iguatemi |
-| Vendas | lojas físicas **e** o Site |
-| Produção | a definir |
+| Estoque | só lojas físicas — `IGUATEMI` e `EGREY JDS` |
+| Vendas | lojas físicas **e** o Site (`00044`) |
+| Entrada de estoque | transferências de `ELENA ES` **para** as lojas (ver D13) |
 
-Em nenhuma das duas entram `ELENA SP` e `ELENA ES`, que são atacado, nem
-`SHOWROOM`, `BAZAR`, `LAVANDERIA`, `CONSERTOS` e afins.
+`ELENA SP` e `ELENA ES` são produção e venda no atacado: **não entram no sellout
+como venda**, só como origem das peças. `00065` (SHOP ONLINE EGREY) é cadastro
+antigo, fora de uso. `SHOWROOM`, `BAZAR`, `LAVANDERIA`, `CONSERTOS` e os demais
+também ficam de fora.
 
 **Efeito colateral no sellout por cor:** como a venda do Site sai do estoque das
 lojas, uma cor pode vender pelo Site e baixar do estoque de Jardins. O sellout
 por cor continua correto no total, mas atribuir venda do Site a uma loja
 específica não faz sentido — e a retirada de compra online na loja, que não tem
 evento próprio no MN, embaralha ainda mais essa fronteira.
+
+## D13 · O Estoque inicial é a transferência da ELENA ES para as lojas
+
+A produção chega **inteira** na Elena — varejo e atacado juntos. O que vira
+estoque de loja é a **transferência da ELENA ES para Jardins e Iguatemi**. É essa
+movimentação, e não a produção total, que forma o Estoque inicial.
+
+**Por que isso importa tanto:** o Estoque inicial era o único dado do processo
+que não vinha do ERP — uma coluna mantida na mão, com fórmulas do tipo
+`=86-1+44-2` acumulando ajustes de meses. Era também o denominador do sellout, o
+que fazia dele o ponto mais frágil de toda a migração.
+
+Se a transferência responde por ele, o Estoque inicial **deixa de ser digitado e
+passa a ser derivado**, com data, produto, cor e tamanho — inclusive resolvendo o
+saldo de abertura por cor, que estava em aberto na D10.
+
+**Como a Egrey registra:** por um evento chamado **"venda entre filiais"**. Ou
+seja, a movimentação não é um tipo próprio de documento — é uma venda com evento
+específico, da ELENA ES para a loja.
+
+Isso tem duas consequências opostas, e as duas importam:
+
+- **Entrada de estoque:** é esse evento que forma o Estoque inicial das lojas.
+- **Venda:** esse evento **não pode** entrar no sellout como venda, senão a
+  receita de varejo infla com movimentação interna.
+
+Descobrir o código do evento é o primeiro passo — `eventos/Eventos_InfluenciaEstoque`,
+sem parâmetro, lista todos com código e descrição. Com ele na mão, decidir entre
+`transferencias/Transferencia_Filiais` (tem `SCRIPTEVENTO`) e
+`movimentacao/vendas_consulta_completa` filtrando por esse `EVENTO`. Detalhes em
+`api-millennium.md`.
+
+**A validar antes de confiar** — nada disso foi chamado ainda:
+
+1. Puxar as transferências ELENA ES → lojas desde o início do acompanhamento e
+   comparar o acumulado com a coluna Estoque inicial da planilha. Se bater, a
+   coluna inteira vira dado.
+2. Confirmar se toda entrada de loja passa por esse evento, ou se há entrada por
+   outro caminho (compra direta, devolução de cliente, acerto de inventário).
+   O que não passar por ele continua precisando de lançamento manual.
+3. Confirmar o tratamento de transferência **entre lojas** — Jardins → Iguatemi
+   não é entrada nova no conjunto, só realocação.
+4. Ver o que fazer com a produção que vai para o atacado e nunca chega às lojas:
+   pela nova regra ela simplesmente não entra, o que parece certo.

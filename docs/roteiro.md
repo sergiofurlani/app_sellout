@@ -65,8 +65,13 @@ produção no `$metadata`** — o documento de origem só cobre venda.
 
 ## Pontos em aberto
 
-**Saldo de abertura por cor.** O valor de hoje existe por produto. Ao descer para
-cor, três saídas:
+**Saldo de abertura por cor — provavelmente resolvido.** Ver D13: a entrada no
+estoque das lojas é a movimentação da ELENA ES para elas, registrada por evento
+de venda entre filiais, e isso está no MN com data, produto, cor e tamanho. Se a
+soma dessas entradas reproduzir a coluna Estoque inicial da planilha, o problema
+some — não há o que estimar.
+
+Se não reproduzir, as três saídas antigas continuam valendo:
 
 1. Ratear o saldo do produto entre as cores na proporção de estoque + vendas
    atuais. Dá histórico imediato, mas o número nasce estimado.

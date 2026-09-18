@@ -285,6 +285,57 @@ situação, fase, oficina, perdas e defeitos.
    Producao da planilha
 5. Qual código de filial é o Site
 
+## Entrada de estoque nas lojas — `transferencias/Transferencia_Filiais`
+
+A peça que faltava para o Estoque inicial (D13). A produção chega inteira na
+Elena; o que vira estoque de loja é a movimentação da ELENA ES para Jardins e
+Iguatemi, registrada por um evento de **"venda entre filiais"**.
+
+```
+campos: DATA, ROMANEIO, NOTA, TAMANHO, GRADE,
+        PRODUTO (Int32, interno), COD_PRODUTO (String, do ERP),
+        COR (Int32, interno), DESC_COR (nome), ESTAMPA, DESC_ESTAMPA,
+        DESC_FILIALO, DESC_FILIALD,        origem e destino, por descrição
+        QUANTS, TAMANHOS, PRECOS (String)  provavelmente a grade
+        QUANTS_S, PRECOS_S, UNIT_M (Decimal)
+
+params: DATAI, DATAF                       período
+        SCRIPTFILIALO + BORIGEM            filial de origem — ELENA ES
+        SCRIPTFILIALD + BDESTINO           filial de destino — as lojas
+        SCRIPTEVENTO + BEVENTO             restringe ao evento certo
+        SCRIPTCOR + BBCOR, PRODUTOI/PRODUTOF, ROMANEIO, NOTA
+        QUEBRA, ORDEM, IMPRESSAO, LAYOUT   controlam o agrupamento — testar
+```
+
+**Não devolve `COD_COR`.** Traz `COR` (interno) e `DESC_COR` (nome), e a planilha
+cruza por código (`0002`). Casar por nome é frágil, então o caminho é montar o
+de-para `COR → COD_COR` a partir do `Detalhado2_Data`, que devolve os dois.
+
+`QUANTS` e `TAMANHOS` são String enquanto `QUANTS_S` é Decimal — provável que os
+primeiros tragam a grade inteira e o segundo o total. Confirmar na primeira
+chamada; muda como a quantidade é lida.
+
+### O código do evento — `eventos/Eventos_InfluenciaEstoque`
+
+Sem parâmetro nenhum. Devolve `EVENTO` (interno), `CODIGO` (do ERP) e
+`DESCRICAO` de todos os eventos que mexem no estoque.
+
+```
+GET /api/millenium/eventos/Eventos_InfluenciaEstoque?$format=json
+```
+
+Achar ali o "venda entre filiais". Depois decidir entre puxar por
+`Transferencia_Filiais` com `SCRIPTEVENTO` ou por `vendas_consulta_completa`
+filtrando aquele `EVENTO` — a segunda já tem cliente e itens, a primeira já tem
+origem e destino. O teste diz qual serve.
+
+Para ver quais filiais usam um evento: `filiais/Lista_FilialXEventos`.
+
+**Aviso que vale para a agregação de venda:** o evento de venda entre filiais
+não pode entrar no sellout como venda. Como a extração filtra por evento
+(10, 30, 204 para venda e 12 para devolução), ele já fica de fora — mas quem
+mexer nessa lista precisa saber por quê.
+
 ## O que ainda falta descobrir
 
 O documento de origem cobre **venda** em profundidade. Para o sellout faltam
