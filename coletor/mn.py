@@ -1,0 +1,129 @@
+"""Cliente mínimo da API Millennium (MN). Só biblioteca padrão.
+
+Roda **dentro da rede da Egrey** — o MN não responde a IP de nuvem.
+
+Credenciais em variável de ambiente:
+
+    EGREY_API_URL      http://egray.millenniumhosting.com.br:6017
+    EGREY_API_USUARIO  int-egray
+    EGREY_API_SENHA    a senha (no PowerShell, entre aspas SIMPLES se tiver #)
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import os
+import re
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import date, datetime, timedelta
+
+BASE = os.environ.get("EGREY_API_URL", "http://egray.millenniumhosting.com.br:6017")
+USUARIO = os.environ.get("EGREY_API_USUARIO", "")
+SENHA = os.environ.get("EGREY_API_SENHA", "")
+
+VENDAS = "/api/millenium/movimentacao/vendas_consulta_completa"
+FILIAIS = "/api/millenium/filiais/Lista_Filiais_SemFiltro"
+
+EVENTOS_VENDA = (10, 30, 204)
+EVENTO_DEVOLUCAO = 12
+TOP = 5000
+TIMEOUT = 180
+TENTATIVAS = 3
+
+RE_DATA_MS = re.compile(r"/Date\((-?\d+)")
+
+
+class Falha(Exception):
+    pass
+
+
+def _auth() -> str:
+    if not USUARIO or not SENHA:
+        raise Falha("Defina EGREY_API_USUARIO e EGREY_API_SENHA no ambiente.")
+    return "Basic " + base64.b64encode(f"{USUARIO}:{SENHA}".encode()).decode()
+
+
+def requisita(caminho: str, **params) -> dict:
+    """GET com retentativa. 4xx não é retentado — é erro de chamada, não de rede."""
+    params.setdefault("$format", "json")
+    url = f"{BASE}{caminho}?{urllib.parse.urlencode(params)}"
+    ultimo = None
+    for tentativa in range(1, TENTATIVAS + 1):
+        req = urllib.request.Request(url, headers={"Authorization": _auth()})
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                texto = r.read().decode("utf-8", errors="replace")
+            return json.loads(texto) if texto.strip() else {}
+        except urllib.error.HTTPError as e:
+            detalhe = e.read().decode("utf-8", errors="replace")[:400]
+            if e.code == 401:
+                raise Falha(
+                    "401. Antes de achar que a senha está errada: se ela tem '#' e "
+                    "você usou aspas duplas no PowerShell, o valor foi cortado. "
+                    "Se persistir, testar o header WTS-Authorization."
+                ) from e
+            if 400 <= e.code < 500:
+                raise Falha(f"HTTP {e.code} em {caminho}: {detalhe}") from e
+            ultimo = f"HTTP {e.code}: {detalhe}"
+        except urllib.error.URLError as e:
+            ultimo = f"rede: {e.reason} (está na rede da Egrey?)"
+        if tentativa < TENTATIVAS:
+            time.sleep(2 * tentativa)
+    raise Falha(f"falhou em {TENTATIVAS} tentativas: {ultimo}")
+
+
+def valores(resposta) -> list:
+    if isinstance(resposta, dict):
+        return resposta.get("value") or []
+    return resposta or []
+
+
+def parse_data(valor):
+    """/Date(1757...000-180)/ → date.
+
+    O offset já foi aplicado pelo MN. Reaplicar joga lançamento para o dia
+    anterior, e o erro só aparece como "a venda do sábado caiu na sexta".
+    """
+    if not valor:
+        return None
+    m = RE_DATA_MS.search(str(valor))
+    return datetime.utcfromtimestamp(int(m.group(1)) / 1000).date() if m else None
+
+
+def filiais() -> list[dict]:
+    """De-para das filiais: cod_filial (texto, do ERP) x filial (inteiro, interno)."""
+    return valores(requisita(FILIAIS))
+
+
+def documentos_do_dia(dia: date, eventos=EVENTOS_VENDA + (EVENTO_DEVOLUCAO,)) -> list[dict]:
+    """Uma chamada por evento. Sem TIPO — com TIPO=S a devolução some."""
+    saida = []
+    for evento in eventos:
+        dados = requisita(
+            VENDAS,
+            **{
+                "$top": TOP,
+                "DATAI": dia.isoformat(),
+                "DATAF": dia.isoformat(),
+                "EVENTO": evento,
+                "BVENDEDORES": "true",
+            },
+        )
+        docs = valores(dados)
+        if len(docs) >= TOP:
+            raise Falha(f"{dia} evento {evento}: bateu o teto de $top, pode estar truncado")
+        for doc in docs:
+            doc["_evento"] = evento
+        saida.extend(docs)
+    return saida
+
+
+def dias(de: date, ate: date):
+    atual = de
+    while atual <= ate:
+        yield atual
+        atual += timedelta(days=1)

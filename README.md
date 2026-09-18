@@ -98,4 +98,6 @@ sellout/core/motor.py      análise e processamento da rodada
 sellout/core/relatorio.py  relatório de conferência
 sellout/web/               app FastAPI (3 telas)
 sellout/cli.py             execução pelo terminal
+coletor/mn.py              cliente da API Millennium (roda na rede da Egrey)
+coletor/valida_site.py     compara a venda por filial do MN com a planilha
 ```

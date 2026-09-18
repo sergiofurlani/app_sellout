@@ -83,13 +83,29 @@ de confirmar o que é cada código.
 GET /api/millenium/filiais/Lista_Filiais_SemFiltro?$format=json
 ```
 
-### Validar que 00044 é o Site
+O de-para foi lido em 18/09/2026 — 39 filiais. As que interessam:
 
-O documento de origem classificou `00044` como "não é loja de varejo" — o que é
-compatível com ser o e-commerce, já que loja física ele não é. Duas conferências:
+| cod_filial | interno | nome |
+|---|---|---|
+| `IGUATEMI` | 5 | EGREY CONFECÇÕES E COMERCIO DE ROUPAS - EIRELI - EPP |
+| `EGREY JDS` | 104 | E. GREY CONFECÇÕES E COMÉRCIO DE ROUPAS |
+| `00044` | 105 | E. GREY CONFECCOES E COMERCIO DE ROUPAS LTDA |
+| `00065` | 49 | **SHOP ONLINE EGREY** |
+| `00067` | 51 | FARFETCH FOTO |
+| `ELENA SP` / `ELENA ES` | 101 / 102 | ELENATIMES ATACADO DO BRASIL LTDA — atacado |
+| `SHOWROOM` | −2000000000 | não é loja |
 
-1. `Lista_Filiais_SemFiltro` e ler o `NOME` do `00044`
-2. Comparar contra a planilha. No export da semana de 18/09 a filial SITE tem:
+### O Site: 00044 ou 00065?
+
+**O nome não decide.** `00044` traz a razão social da empresa, que não diz nada
+sobre canal; `00065` se chama literalmente SHOP ONLINE EGREY.
+
+A favor do `00044`: é a filial que aparece com venda na amostra de 200
+documentos do levantamento anterior, e o `00065` não apareceu — o que sugere que
+`00065` está inativo ou é usado para outra coisa. Contra: o nome.
+
+**Decide no número.** `coletor/valida_site.py` puxa a venda por filial do período
+e compara com o que a planilha traz. No export de 18/09:
 
 | | |
 |---|---|
@@ -98,12 +114,22 @@ compatível com ser o e-commerce, já que loja física ele não é. Duas confer�
 | Valor | R$ 25.548,44 |
 | Produtos distintos | 35 |
 
-Puxando `00044` no mesmo período, os números têm que bater. Lembrando que pela
-API a devolução vem **positiva** com `tipo_operacao = "E"`, enquanto a planilha
-já traz negativa — daí as 13 linhas negativas acima.
+| | JARDINS | IGUATEMI | SITE |
+|---|---|---|---|
+| Linhas | 317 | 293 | 45 |
+| Peças líquidas | 112 | 152 | 21 |
+| Valor | R$ 136.585,80 | R$ 183.579,10 | R$ 25.548,44 |
+| Produtos distintos | 118 | 101 | 35 |
 
-Para referência, as outras duas no mesmo export: IGUATEMI 293 linhas e 152 peças,
-JARDINS 317 linhas e 112 peças.
+A filial cujo líquido e valor baterem com a coluna SITE é o e-commerce. Se
+nenhuma bater, o período do export não é o que foi consultado.
+
+```
+python -m coletor.valida_site --de 2026-09-11 --ate 2026-09-17
+```
+
+Lembrando que pela API a devolução vem **positiva** com `tipo_operacao = "E"`,
+enquanto a planilha já traz negativa — daí as 13 linhas negativas do SITE.
 
 ## Armadilhas que nos atingem
 
