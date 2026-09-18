@@ -17,6 +17,37 @@ O nome do método é sensível a maiúsculas no caminho. Credencial em variável
 ambiente, nunca em arquivo versionado. Se der 401 com credencial certa, testar o
 header proprietário `WTS-Authorization` antes de concluir que a senha está errada.
 
+### Como rodar os scripts do coletor
+
+Na **sua máquina**, dentro da rede da Egrey — não no Railway, não em nuvem. O
+Railway nunca alcança o MN, e é por isso que o coletor existe como programa
+separado (ver a seção seguinte).
+
+Abra o PowerShell na pasta do repositório — a mesma onde ficam `sellout/` e
+`coletor/` — e defina as três variáveis. A senha tem `#`, então vai entre aspas
+**simples**; com aspas duplas o PowerShell corta no `#` e o resultado é um 401
+que parece senha errada:
+
+```powershell
+cd C:\caminho\para\app_sellout
+
+$env:EGREY_API_URL     = 'http://egray.millenniumhosting.com.br:6017'
+$env:EGREY_API_USUARIO = 'int-egray'
+$env:EGREY_API_SENHA   = 'a-senha-com#'
+
+python -m coletor.valida_site --de 2026-09-11 --ate 2026-09-17
+python -m coletor.explora_entradas --de 2026-09-01 --ate 2026-09-17
+```
+
+As variáveis valem só naquela janela do PowerShell. Fechou, sumiram — o que é
+bom: a senha não fica em lugar nenhum.
+
+Nada precisa estar instalado além do Python: o `coletor` usa só biblioteca
+padrão, de propósito, para rodar em qualquer máquina da rede sem `pip install`.
+
+`python -m coletor.x` (com ponto, sem `.py`) só funciona a partir da raiz do
+repositório. Rodar de dentro da pasta `coletor` dá `No module named coletor`.
+
 ## A restrição que define a arquitetura
 
 **O ERP só responde à rede da Egrey.** Contêiner em nuvem não alcança — HTTPS é
@@ -315,19 +346,46 @@ de-para `COR → COD_COR` a partir do `Detalhado2_Data`, que devolve os dois.
 primeiros tragam a grade inteira e o segundo o total. Confirmar na primeira
 chamada; muda como a quantidade é lida.
 
-### O código do evento — `eventos/Eventos_InfluenciaEstoque`
+### Os eventos de entrada — `eventos/Eventos_InfluenciaEstoque`
 
 Sem parâmetro nenhum. Devolve `EVENTO` (interno), `CODIGO` (do ERP) e
-`DESCRICAO` de todos os eventos que mexem no estoque.
+`DESCRICAO`.
 
 ```
 GET /api/millenium/eventos/Eventos_InfluenciaEstoque?$format=json
 ```
 
-Achar ali o "venda entre filiais". Depois decidir entre puxar por
-`Transferencia_Filiais` com `SCRIPTEVENTO` ou por `vendas_consulta_completa`
-filtrando aquele `EVENTO` — a segunda já tem cliente e itens, a primeira já tem
-origem e destino. O teste diz qual serve.
+**Chamado em 18/09: devolveu 20 eventos, todos de entrada.** O evento de saída
+"venda entre filiais" não aparece aqui — este método lista só o lado que
+*entra* no estoque. E é justamente esse o lado que interessa: o Estoque inicial
+é a entrada na loja, não a saída da Elena.
+
+Os candidatos, em ordem de probabilidade:
+
+| evento | código | descrição | leitura |
+|---:|---|---|---|
+| 105 | `00107` | RECEBIMENTO DE COMPRA P.A (LOJAS) | **mais provável** — produto acabado, destino explícito lojas |
+| 104 | `00106` | RECEBIMENTO DE COMPRA ELENATIMES ES | origem explícita, destino não |
+| 13 | `12` | RECEBIMENTO DE TRANSFERENCIA MATRIZ | se a Elena for tratada como matriz |
+| 103 | `00105` | RECEBIMENTO DE COMPRA P.A | genérico |
+| 115 | `00123` | RECEBIMENTO ELENATIMES (ATACADO) | **fica de fora** — é o atacado |
+
+O par `00107` (LOJAS) x `00123` (ATACADO) é o mesmo corte varejo/atacado que o
+negócio descreve. Isso é indício forte, não prova: só a chamada decide.
+
+### A armadilha do código do evento
+
+O par interno x ERP morde aqui de um jeito especialmente feio:
+
+```
+evento 12  = DEVOLUÇÃO DE VENDA VAREJO        código "11"
+evento 13  = RECEBIMENTO DE TRANSFERENCIA     código "12"
+```
+
+O `12` existe dos dois lados, **apontando para eventos diferentes**. O coletor
+já usa `EVENTO=12` para devolução e funciona — o que confirma que o parâmetro
+`EVENTO` recebe o **inteiro interno**, nunca a string `CODIGO`. Trocar os dois
+não dá erro: devolve transferência no lugar de devolução, em silêncio.
 
 Para ver quais filiais usam um evento: `filiais/Lista_FilialXEventos`.
 
@@ -335,6 +393,34 @@ Para ver quais filiais usam um evento: `filiais/Lista_FilialXEventos`.
 não pode entrar no sellout como venda. Como a extração filtra por evento
 (10, 30, 204 para venda e 12 para devolução), ele já fica de fora — mas quem
 mexer nessa lista precisa saber por quê.
+
+### `saidas/MovimentacaoPorGrade` — resolve o buraco do `COD_COR`
+
+Achado ao procurar o evento. É o método mais bem formado que vimos para o
+sellout: devolve **os dois códigos do ERP**, com grade e evento.
+
+```
+campos: COD_PRODUTO (String), REFERENCIA, DESC_PRODUTO, DESC_MARCA,
+        COD_COR (String), DESC_COR,        <- o que faltava
+        COD_FILIAL (String), DESC_FILIAL,
+        DATA, DESC_EVENTO, GERADOR,
+        QUANTIDADES, TAMANHOS (String), QTDE (Decimal), GRADE
+
+params: DATAI, DATAF, TIPO, QUEBRA, BPRODUTO, PRODUTOINI, PRODUTOFIM,
+        SCRIPTFILIAL/FILIAL, SCRIPTEVENTO, SCRIPTCOLECAO, SCRIPTTIPO, ...
+```
+
+Dois usos:
+
+1. **De-para `COR → COD_COR`** — dispensa montar pelo `Detalhado2_Data`.
+2. **Talvez a extração inteira** — tem período, filial, evento, produto, cor e
+   grade. Traz **uma** filial por linha (`COD_FILIAL`), então para transferência
+   ainda é preciso saber se essa filial é origem ou destino; é o que o
+   `Transferencia_Filiais` dá de graça com `DESC_FILIALO`/`DESC_FILIALD`.
+
+Provável divisão: `Transferencia_Filiais` para a direção do fluxo,
+`MovimentacaoPorGrade` para a chave de cor. `coletor/explora_entradas.py`
+chama os dois lado a lado.
 
 ## O que ainda falta descobrir
 

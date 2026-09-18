@@ -176,11 +176,28 @@ Isso tem duas consequências opostas, e as duas importam:
 - **Venda:** esse evento **não pode** entrar no sellout como venda, senão a
   receita de varejo infla com movimentação interna.
 
-Descobrir o código do evento é o primeiro passo — `eventos/Eventos_InfluenciaEstoque`,
-sem parâmetro, lista todos com código e descrição. Com ele na mão, decidir entre
-`transferencias/Transferencia_Filiais` (tem `SCRIPTEVENTO`) e
-`movimentacao/vendas_consulta_completa` filtrando por esse `EVENTO`. Detalhes em
-`api-millennium.md`.
+**O que a lista de eventos mostrou (18/09):** `eventos/Eventos_InfluenciaEstoque`
+devolveu 20 eventos, **todos de entrada** — o evento de saída "venda entre
+filiais" não está lá. Isso melhora a situação em vez de piorar: o que forma o
+Estoque inicial é a **entrada na loja**, e é justamente esse lado que o método
+lista. Lendo pela entrada, o evento de venda nunca é tocado e não há risco de
+inflar a receita de varejo.
+
+Cinco candidatos, com um par revelador:
+
+| evento | código | descrição |
+|---:|---|---|
+| 105 | `00107` | RECEBIMENTO DE COMPRA P.A **(LOJAS)** |
+| 115 | `00123` | RECEBIMENTO ELENATIMES **(ATACADO)** |
+
+O ERP já separa o que vai para loja do que vai para o atacado, no próprio
+evento — exatamente o corte que o negócio descreve. Indício forte, não prova.
+Os outros candidatos e a armadilha do código (`12` interno é devolução, `12` do
+ERP é transferência) estão em `api-millennium.md`.
+
+`coletor/explora_entradas.py` chama `Transferencia_Filiais` e
+`saidas/MovimentacaoPorGrade` no mesmo período e mostra qual evento carrega
+ELENA ES → lojas.
 
 **A validar antes de confiar** — nada disso foi chamado ainda:
 
@@ -190,7 +207,16 @@ sem parâmetro, lista todos com código e descrição. Com ele na mão, decidir 
 2. Confirmar se toda entrada de loja passa por esse evento, ou se há entrada por
    outro caminho (compra direta, devolução de cliente, acerto de inventário).
    O que não passar por ele continua precisando de lançamento manual.
-3. Confirmar o tratamento de transferência **entre lojas** — Jardins → Iguatemi
-   não é entrada nova no conjunto, só realocação.
+3. ~~Confirmar o tratamento de transferência **entre lojas**~~ — **confirmado em
+   18/09: é realocação, não entrada.** Jardins → Iguatemi não cria peça nova no
+   conjunto; só muda de prateleira. A regra: só entra no Estoque inicial a
+   transferência cuja **origem está fora do conjunto de lojas** (ELENA ES). Com
+   origem e destino ambos em loja, ignorar.
+
+   Consequência prática: o Estoque inicial fica certo no total e certo por
+   loja — mas o **sellout por loja** de um produto realocado fica torto, porque
+   a peça foi vendida onde não nasceu. Como o sellout é acompanhado no
+   consolidado, isso não morde hoje. Morderia se um dia houvesse sellout por
+   filial.
 4. Ver o que fazer com a produção que vai para o atacado e nunca chega às lojas:
    pela nova regra ela simplesmente não entra, o que parece certo.
