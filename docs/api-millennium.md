@@ -39,6 +39,72 @@ rede da Egrey                      nuvem
 O formato do que o coletor envia é o mesmo que a ingestão por upload já consome.
 Só muda o transporte — nada do que for feito na Etapa 1 se perde.
 
+O coletor roda na **máquina do Sergio**, a mesma do Projeto Conversão. Duas
+consequências a assumir: a extração só acontece com aquela máquina ligada e na
+rede da Egrey, e o upload pela tela continua sendo o caminho de emergência.
+
+## A regra que atravessa tudo: código interno x código do ERP
+
+No MN **toda tabela tem dois códigos**: um interno, inteiro, e o que aparece nas
+telas, texto. Não é só datatype diferente — **o conteúdo é outro**. Cruzar um com
+o outro não dá erro: dá número errado.
+
+| Conceito | Interno (Int32) | Do ERP (String) |
+|---|---|---|
+| Produto | `PRODUTO` | `COD_PRODUTO` — `140000` |
+| Cor | `COR` | `COD_COR` — `0002` |
+| Estampa | `ESTAMPA` | `COD_EST` |
+| Filial | `FILIAL` | `COD_FILIAL` — `00044` |
+| Funcionário | `FUNCIONARIO` | `COD_FUNCIONARIO` — `000024` |
+
+**A planilha só tem os códigos do ERP.** Todo cruzamento nosso é por eles.
+
+Três armadilhas concretas nos métodos que vamos usar:
+
+1. **`Detalhado2_Data` devolve `COR` e `COD_COR`.** `COR` é o interno; a cor que
+   casa com a planilha é `COD_COR`. Pegar o campo errado faz o cruzamento com a
+   aba Preco falhar em silêncio.
+2. **`DadosPrecos` recebe `PRODUTO:Int32`** — quer o interno, que a planilha não
+   tem. E `Detalhado2_Data` não devolve o interno do produto, só `COD_PRODUTO`.
+   Vai precisar de um de-para.
+3. **`Produto_Filial_Analitico` devolve os dois** (`PRODUTO` e `COD_PRODUTO`) —
+   serve como o de-para do item anterior.
+
+Nos parâmetros o padrão se repete: `PRODUTOI`/`PRODUTOF` são String (código do
+ERP), enquanto `PRODUTO`, `COR` e `FILIAL` sozinhos são Int32 (interno). Ler o
+tipo no `$metadata` antes de montar a chamada.
+
+## De-para das filiais — `filiais/Lista_Filiais_SemFiltro`
+
+Sem parâmetro nenhum, devolve `COD_FILIAL`, `FILIAL` e `NOME`. É a forma direta
+de confirmar o que é cada código.
+
+```
+GET /api/millenium/filiais/Lista_Filiais_SemFiltro?$format=json
+```
+
+### Validar que 00044 é o Site
+
+O documento de origem classificou `00044` como "não é loja de varejo" — o que é
+compatível com ser o e-commerce, já que loja física ele não é. Duas conferências:
+
+1. `Lista_Filiais_SemFiltro` e ler o `NOME` do `00044`
+2. Comparar contra a planilha. No export da semana de 18/09 a filial SITE tem:
+
+| | |
+|---|---|
+| Linhas | 45 |
+| Peças líquidas | 21 (34 de saída, 13 de devolução) |
+| Valor | R$ 25.548,44 |
+| Produtos distintos | 35 |
+
+Puxando `00044` no mesmo período, os números têm que bater. Lembrando que pela
+API a devolução vem **positiva** com `tipo_operacao = "E"`, enquanto a planilha
+já traz negativa — daí as 13 linhas negativas acima.
+
+Para referência, as outras duas no mesmo export: IGUATEMI 293 linhas e 152 peças,
+JARDINS 317 linhas e 112 peças.
+
 ## Armadilhas que nos atingem
 
 As três primeiras produzem número errado sem gerar erro, que é o pior caso.
