@@ -47,6 +47,7 @@ Ao final sai também um **relatório de conferência** com o que foi feito e o q
 | [docs/decisoes.md](docs/decisoes.md) | as regras de negócio e por que cada uma existe |
 | [docs/roteiro.md](docs/roteiro.md) | as etapas da migração para banco e os pontos em aberto |
 | [docs/operacao.md](docs/operacao.md) | rodada semanal, o que conferir e como voltar atrás |
+| [docs/api-millennium.md](docs/api-millennium.md) | acesso ao ERP, armadilhas verificadas e o que falta descobrir |
 
 A tag `v1.0` marca o processo por planilha funcionando e conferido — é o ponto
 de retorno caso a migração para banco não dê certo.

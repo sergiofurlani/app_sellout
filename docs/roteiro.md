@@ -39,10 +39,21 @@ Aqui a planilha vira saída, não fonte.
 
 ## Etapa 3 · Ligar no ERP
 
-- Adaptador de leitura direta, substituindo o upload
-- Agendamento: o app busca sozinho, você só confere e fecha a semana
-- A tela de conferência continua — a validação de layout e as pendências
-  seguem valendo, só muda de onde o dado vem
+O ERP Millennium **só responde à rede da Egrey** — contêiner em nuvem não
+alcança (ver `api-millennium.md`). Então não é o app que busca: é um coletor
+rodando dentro da rede da Egrey que lê e empurra.
+
+- Coletor na rede da Egrey, no mesmo molde do Projeto Conversão
+- Endpoint autenticado no app para receber o que o coletor manda
+- Agendamento no coletor; o app só recebe, valida e grava
+- A tela de conferência continua igual — só muda de onde o dado vem
+
+O formato enviado é o mesmo que a ingestão por upload consome, então nada da
+Etapa 1 é desperdiçado. E o upload continua existindo como caminho de
+emergência, para quando a rede ou o coletor falharem.
+
+**Antes desta etapa é preciso descobrir os métodos de estoque, preço, produtos e
+produção no `$metadata`** — o documento de origem só cobre venda.
 
 ## Etapa 4 · Aplicativo
 
@@ -68,8 +79,16 @@ cor, três saídas:
 aproximados, e a aproximação some sozinha. A 1 esconde a incerteza e a 2 deixa a
 tela vazia por meses.
 
-**Acesso ao ERP.** Falta saber qual é o ERP e que tipo de acesso existe — banco
-direto com usuário de leitura, ou API. Isso define a Etapa 3 e nada antes dela.
+**Métodos do ERP para estoque, preço, produtos e produção.** A exploração da API
+Millennium cobriu venda; as outras quatro fontes ainda não têm método conhecido.
+Estão no `$metadata`, que só é acessível de dentro da rede da Egrey.
+
+**Qual filial é o Site.** A planilha separa Jardins, Iguatemi e Site; na amostra
+da API nenhuma das filiais é obviamente o e-commerce. Sem isso a coluna Vendas
+Site não é reproduzível pela API.
+
+**Onde roda o coletor.** O Projeto Conversão já tem um processo na rede da Egrey.
+Reaproveitar a mesma máquina e o mesmo agendamento é mais barato que montar outro.
 
 **Cor na aba Produção.** É a única origem que traz o nome da cor sem o código.
 Casar por nome funciona hoje, mas é frágil. Se der para incluir o código no
