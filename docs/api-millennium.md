@@ -74,6 +74,116 @@ def parse_data_millennium(valor):
 Teste de sanidade: em varejo de moda sábado é o maior dia. Se o pico sair na
 sexta, o fuso está sendo aplicado duas vezes.
 
+## Os métodos das quatro fontes que faltavam
+
+Encontrados no `$metadata` em 18/09/2026, procurando **pelos campos** que
+precisamos, não pelo nome do método — nome de método não diz nada num schema com
+5.413 deles. Nenhum foi chamado ainda: os campos e parâmetros abaixo vêm do
+schema, o comportamento real ainda precisa ser conferido.
+
+**O caminho sai do nome do tipo retornado.** `MILLENIUM_ESTOQUE_DETALHADO2_DATA`
+→ `/api/millenium/estoque/Detalhado2_Data`. Regra confirmada contra os três
+métodos já em uso (`MILLENIUM_MOVIMENTACAO_VENDAS_CONSULTA_COMPLETA` →
+`/movimentacao/vendas_consulta_completa`).
+
+### Estoque + cadastro — `estoque/Detalhado2_Data`
+
+O achado mais útil: **cobre a aba Estoque e a aba Produtos numa chamada só.**
+
+```
+campos: COD_PRODUTO, DESCRICAO, ESTOQUE, ENTRADA, VENDA, TAMANHO,
+        COR, COD_COR, DESC_COR, GRADE, MASTER,
+        COD_DIVISAO, DESC_DIVISAO, COD_MARCA, DESC_MARCA,
+        COD_TIPO, DESC_TIPO, COD_DEPARTAMENTO, DESC_DEPARTAMENTO,
+        COD_COLECAO, DESC_COLECAO, COD_GRUPO, DESC_GRUPO,
+        COD_PROD_FOR, COD_FORNECEDOR, NOME_FORNECEDOR, AGRUPA, DESC_AGRUPA
+```
+
+Traz o grão que o controle por cor precisa (produto + cor + tamanho) **e** todos
+os atributos de filtro que a tela vai usar: coleção, divisão, departamento, tipo,
+marca, grupo.
+
+```
+params: DATAI, DATAF                          período
+        PRODUTOI, PRODUTOF, PRODUTO           faixa de produto
+        COLECAO + SCRIPT_COLECOES             filtro por coleção (booleano + lista)
+        DIVISAO + SCRIPT_DIVISOES
+        DEPTO + SCRIPT_DEPTOS
+        TIPO + SCRIPT_TIPOS
+        MARCA + SCRIPT_MARCAS
+        ANALISE, QUEBRA, AGRUPAMENTO, ORDEM   controlam o agrupamento — testar
+        QTDE, TIPO_PROD
+```
+
+O padrão booleano + `SCRIPT_*` se repete: o booleano liga o filtro, a string traz
+a lista. `Detalhado2` é a variante com `TAMANHOS` (plural, grade inteira em um
+campo) em vez de `TAMANHO` — a `_Data` é a que serve para nós.
+
+**Não traz filial.** Se o estoque por filial voltar a importar, é o método
+abaixo.
+
+### Estoque por filial — `estoque/Produto_Filial_Analitico`
+
+```
+campos: PRODUTO, COD_PRODUTO, DESC_PROD, COR, DESC_COR, ESTAMPA, DESC_EST,
+        FILIAL, DADOSFILIAL, ESTOQUE, TOTEST, TOTAL_EST, SP_QUANT,
+        TAMANHOS, SaldoQtde, TAMANHOSALDO, PRECOP, VALOR, TOTVLR, EVENTO
+```
+
+Mesma família de filtros, mais `SCRIPTFILIAL`/`FILIAIS`. Tem um parâmetro
+`SALDOINICIAL:Boolean` que **vale investigar** — se devolver saldo de abertura
+por produto e cor, resolve sozinho o ponto em aberto do roteiro.
+
+### Preço — `produtos/DadosPrecos`
+
+```
+campos: PRODUTO, TABELA, COR, ESTAMPA, TAMANHO, PRECO, CUSTO, PRECO_COM_IPI
+params: PRODUTOS:String (lista), TABELA, PRODUTO, DATA_PRECO, FILIAL,
+        FORNECEDOR, UFBASE, TIPO_EMPRESA, LOTE, IPI_CONSIDERAR
+```
+
+É exatamente o grão da aba Preco (Produto + Código Cor + Tamanho → Preço), com
+`DATA_PRECO` de brinde — preço histórico, que a planilha não tem.
+
+Alternativa: `precos/LocalizaMultiplos`, que traz `COD_PRODUTO` e
+`DESCRICAO_TABELA` junto, mas recebe a lista de produtos como estrutura em vez
+de string.
+
+**Atenção à tabela de preço.** Os dois métodos têm `TABELA` como parâmetro; a
+planilha não diz qual tabela usa. Descobrir antes de confiar no Nível de Estoque.
+
+### Produção — `producao/Entradas_Via_Producao`
+
+```
+campos: N_ORDEM, DATA, DESC_PRODUTO, QTDE, QTDES, TAMANHOS,
+        COR, ESTAMPA, FILIAL, DEFTO, DEFTOS, QTDEFEITO
+params: DATAI, DATAF, PRODUTOI, PRODUTOF, SCRIPTFILIAL/SELFILIAL,
+        AGRUPAR, AGRDATAS, AGRFILIAIS,
+        SCOLECAO/BCOLECAO, SGRUPO/BGRUPO, SMARCA/BMARCA,
+        SCATEGORIA/BCATEGORIA, SDEPARTAMENTO/BDEPARTAMENTO,
+        STIPO/BTIPO, SDIVISAO/BDIVISAO, SSUBCOLECAO/BSUBCOLECAO
+```
+
+Entradas por produção **no período**, com data e número de ordem — melhor que a
+planilha, que só traz o acumulado sem data. É o que a tabela `movimento` do novo
+modelo precisa para registrar entrada com data.
+
+`DEFTO` e `QTDEFEITO` sugerem que defeito vem separado da quantidade boa;
+confirmar se `QTDE` já é líquida.
+
+Para acompanhar ordem em andamento: `producao/Consulta_Ordem_Producao`, com
+situação, fase, oficina, perdas e defeitos.
+
+### O que testar na primeira chamada
+
+1. `Detalhado2_Data` de um dia, e comparar o estoque total com a planilha da
+   semana — hoje são 9.844 peças em 845 combinações de código e cor
+2. Descobrir qual `TABELA` de preço a planilha usa, conferindo o Nível de Estoque
+3. `Produto_Filial_Analitico` com `SALDOINICIAL=true`, para ver o que volta
+4. `Entradas_Via_Producao` num período conhecido, conferindo contra a aba
+   Producao da planilha
+5. Qual código de filial é o Site
+
 ## O que ainda falta descobrir
 
 O documento de origem cobre **venda** em profundidade. Para o sellout faltam
@@ -81,11 +191,14 @@ quatro fontes, todas descobríveis pelo `$metadata`:
 
 | Fonte | Situação |
 |---|---|
-| Vendas | Resolvido — `movimentacao/vendas_consulta_completa` |
-| **Estoque atual** | Método desconhecido |
-| **Preço** | Método desconhecido |
-| **Produtos** (cadastro, coleção, divisão, departamento) | Método desconhecido |
-| **Produção** | Método desconhecido |
+| Vendas | Em uso — `movimentacao/vendas_consulta_completa` |
+| Estoque atual | Candidato — `estoque/Detalhado2_Data` |
+| Preço | Candidato — `produtos/DadosPrecos` |
+| Produtos (cadastro) | Sai junto com o estoque no `Detalhado2_Data` |
+| Produção | Candidato — `producao/Entradas_Via_Producao` |
+
+Os candidatos vieram do `$metadata` e **ainda não foram chamados**. Detalhe de
+cada um na seção anterior.
 
 Procedimento, da seção 8 do documento original:
 
