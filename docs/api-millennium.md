@@ -95,6 +95,15 @@ O de-para foi lido em 18/09/2026 — 39 filiais. As que interessam:
 | `ELENA SP` / `ELENA ES` | 101 / 102 | ELENATIMES ATACADO DO BRASIL LTDA — atacado |
 | `SHOWROOM` | −2000000000 | não é loja |
 
+**A lista branca muda conforme a fonte.** O e-commerce não tem estoque próprio —
+vende do estoque das lojas — então entra em vendas e fica **fora** de estoque,
+senão o saldo das lojas é contado duas vezes (ver D12 em `decisoes.md`).
+
+Atenção também ao rótulo: no export de estoque as lojas aparecem como
+`EGREY JARDINS` e `EGREY IGUATEMI`, enquanto o de-para de filiais traz
+`EGREY JDS` e `IGUATEMI`. Casar por `cod_filial` ou pelo interno, nunca pelo
+nome.
+
 ### O Site: 00044 ou 00065?
 
 **O nome não decide.** `00044` traz a razão social da empresa, que não diz nada

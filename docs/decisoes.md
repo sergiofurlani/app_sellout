@@ -44,8 +44,11 @@ As filiais presentes no export entram na soma. Quando a coluna Filial vem em
 branco, tudo entra.
 
 **Histórico:** eram 3 filiais (E. GREY, EGREY JARDINS, EGREY IGUATEMI); a
-E. GREY saiu do export em 31/08 e o estoque caiu de 12.737 para 9.450 peças.
-A tela de revisão lista o que encontrou, para a queda não passar despercebida.
+E. GREY saiu do export em 31/08 e o estoque caiu de 12.737 para 9.450 peças. Na
+época ficou como risco em aberto — **era intencional, e está certo**: ver D12.
+
+A tela de revisão lista as filiais que encontrou, para uma queda dessas nunca
+passar despercebida.
 
 ## D5 · Produção só entra se houver estoque
 
@@ -117,3 +120,30 @@ com data e origem.
 HOME, GLORIA KALIL, PIMA, CASHMERE, COURO e as coleções não existem como campo
 no ERP — hoje são o nome do bloco na planilha. Viram atributo próprio do
 produto, editável no app.
+
+## D12 · O e-commerce não tem estoque próprio
+
+O Site vende do estoque das lojas. Então a filial do e-commerce entra em
+**vendas** e fica de fora de **estoque** — contá-la duplicaria o saldo das lojas.
+
+Foi por isso que a filial E. GREY saiu do export de estoque em 31/08: orientação
+dada à origem, não defeito. A queda de 12.737 para 9.450 peças foi a correção de
+uma contagem dobrada.
+
+**Consequência para o coletor:** a lista branca de filiais é **diferente por
+fonte**.
+
+| Fonte | Filiais |
+|---|---|
+| Estoque | só lojas físicas — Jardins e Iguatemi |
+| Vendas | lojas físicas **e** o Site |
+| Produção | a definir |
+
+Em nenhuma das duas entram `ELENA SP` e `ELENA ES`, que são atacado, nem
+`SHOWROOM`, `BAZAR`, `LAVANDERIA`, `CONSERTOS` e afins.
+
+**Efeito colateral no sellout por cor:** como a venda do Site sai do estoque das
+lojas, uma cor pode vender pelo Site e baixar do estoque de Jardins. O sellout
+por cor continua correto no total, mas atribuir venda do Site a uma loja
+específica não faz sentido — e a retirada de compra online na loja, que não tem
+evento próprio no MN, embaralha ainda mais essa fronteira.
