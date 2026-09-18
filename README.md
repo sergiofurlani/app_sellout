@@ -39,6 +39,18 @@ Ao final sai também um **relatório de conferência** com o que foi feito e o q
 | Códigos duplicados que o vermelho não resolve | manter as linhas como estão |
 | Produtos novos | marcados os que têm estoque |
 
+## Documentação
+
+| Documento | Para quê |
+|---|---|
+| [docs/arquitetura.md](docs/arquitetura.md) | como o sistema é hoje e para onde vai |
+| [docs/decisoes.md](docs/decisoes.md) | as regras de negócio e por que cada uma existe |
+| [docs/roteiro.md](docs/roteiro.md) | as etapas da migração para banco e os pontos em aberto |
+| [docs/operacao.md](docs/operacao.md) | rodada semanal, o que conferir e como voltar atrás |
+
+A tag `v1.0` marca o processo por planilha funcionando e conferido — é o ponto
+de retorno caso a migração para banco não dê certo.
+
 ## Rodar localmente
 
 ```bash
