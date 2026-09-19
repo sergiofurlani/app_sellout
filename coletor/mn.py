@@ -44,7 +44,7 @@ EVENTOS = [
     {"rotulo": "venda loja (2)",        "interno": 30,   "codigo": None,    "sinal": +1},
     {"rotulo": "venda loja (3)",        "interno": 204,  "codigo": None,    "sinal": +1},
     {"rotulo": "devolucao varejo",      "interno": 12,   "codigo": "11",    "sinal": -1},
-    {"rotulo": "venda e-commerce",      "interno": None, "codigo": "00003", "sinal": +1},
+    {"rotulo": "venda e-commerce",      "interno": 25,   "codigo": "00003", "sinal": +1},
     {"rotulo": "devolucao e-commerce",  "interno": 23,   "codigo": "00002", "sinal": -1},
     {"rotulo": "troca/cupom e-commerce","interno": 27,   "codigo": "00004", "sinal": -1},
 ]
