@@ -14,6 +14,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import pathlib
 import re
 import time
 import urllib.error
@@ -189,23 +190,55 @@ def conferir_eventos(tabela=None) -> tuple[list[dict], list[str]]:
     return resolvidos, avisos
 
 
+CACHE = pathlib.Path(os.environ.get("EGREY_CACHE", ".cache_mn"))
+USAR_CACHE = True
+
+
+def _do_cache(dia: date, evento: int):
+    """Dia fechado é imutável: uma vez puxado, não muda mais.
+
+    Sem isso, mexer na agregação custa a extração inteira de novo, e uma falha
+    no dia 30 joga fora os 29 anteriores. O dia de hoje nunca é gravado — ainda
+    está recebendo lançamento.
+    """
+    if not USAR_CACHE or dia >= date.today():
+        return None
+    return CACHE / f"{dia.isoformat()}-ev{evento}.json"
+
+
 def documentos_do_dia(dia: date, eventos=EVENTOS_VENDA + (EVENTO_DEVOLUCAO,)) -> list[dict]:
     """Uma chamada por evento. Sem TIPO — com TIPO=S a devolução some."""
     saida = []
     for evento in eventos:
-        dados = requisita(
-            VENDAS,
-            **{
-                "$top": TOP,
-                "DATAI": dia.isoformat(),
-                "DATAF": dia.isoformat(),
-                "EVENTO": evento,
-                "BVENDEDORES": "true",
-            },
-        )
-        docs = valores(dados)
-        if len(docs) >= TOP:
-            raise Falha(f"{dia} evento {evento}: bateu o teto de $top, pode estar truncado")
+        arq = _do_cache(dia, evento)
+        docs = None
+        if arq and arq.exists():
+            try:
+                docs = json.loads(arq.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                docs = None
+
+        if docs is None:
+            dados = requisita(
+                VENDAS,
+                **{
+                    "$top": TOP,
+                    "DATAI": dia.isoformat(),
+                    "DATAF": dia.isoformat(),
+                    "EVENTO": evento,
+                    "BVENDEDORES": "true",
+                },
+            )
+            docs = valores(dados)
+            if len(docs) >= TOP:
+                raise Falha(f"{dia} evento {evento}: bateu o teto de $top, pode estar truncado")
+            if arq:
+                try:
+                    arq.parent.mkdir(parents=True, exist_ok=True)
+                    arq.write_text(json.dumps(docs), encoding="utf-8")
+                except OSError:
+                    pass          # cache é conforto, não requisito
+
         for doc in docs:
             doc["_evento"] = evento
         saida.extend(docs)

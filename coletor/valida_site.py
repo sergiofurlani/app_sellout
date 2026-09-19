@@ -40,6 +40,14 @@ REFERENCIA = {
 
 JANELA = 7
 
+# A filial do MN que corresponde a cada coluna da planilha. O Site é o 00044,
+# confirmado em 19/09; ELENA ES fica de fora (D12) e nem entra no de-para.
+DE_PARA = {
+    "EGREY JDS": "JARDINS",
+    "IGUATEMI": "IGUATEMI",
+    "00044": "SITE",
+}
+
 
 def dia(texto: str) -> date:
     return date.fromisoformat(texto)
@@ -119,39 +127,59 @@ def distancia(a: dict, ref: dict) -> float:
     return (e_pecas + e_valor) / 2
 
 
-def varre(diarios, ordem, nomes) -> None:
-    """Desliza janelas de 7 dias sobre os dias já puxados."""
-    ref = REFERENCIA["SITE"]
-    print(f"\nJanelas de {JANELA} dias, ordenadas pela distância do SITE "
-          f"({ref['pecas']} peças / R$ {ref['valor']:,.2f}):\n")
-    cab = (f'{"janela":25} {"filial":12} {"líquido":>8} {"valor":>14} '
-           f'{"prod":>5} {"erro":>7}  nome')
+def varre(diarios, ordem, tamanhos) -> None:
+    """Desliza janelas sobre os dias já puxados, pontuando as TRÊS colunas.
+
+    A primeira versão pontuava só o SITE, e por isso disse que 31/08–04/09 era
+    a resposta: o Site bate ali porque não fatura no fim de semana. As lojas
+    vendem — e ficaram em 65% da planilha. Quem decide o período é o conjunto.
+    """
+    print("\nJanelas, ordenadas pelo erro somado das três colunas:\n")
+    cab = (f'{"janela":26} {"dias":>4}  {"JARDINS":>8} {"IGUATEMI":>8} '
+           f'{"SITE":>8}  {"total":>7}')
     print(cab)
     print("-" * len(cab))
 
     linhas = []
-    for i in range(len(ordem) - JANELA + 1):
-        fatia = ordem[i:i + JANELA]
-        junto = defaultdict(novo)
-        for d in fatia:
-            for filial, a in diarios[d].items():
-                soma(junto[filial], a)
-        for filial, a in junto.items():
-            if a["saida"] == 0 and a["entrada"] == 0:
-                continue
-            linhas.append((distancia(a, ref), fatia[0], fatia[-1], filial, a))
+    for n in tamanhos:
+        for i in range(len(ordem) - n + 1):
+            fatia = ordem[i:i + n]
+            junto = defaultdict(novo)
+            for d in fatia:
+                for filial, a in diarios[d].items():
+                    rot = DE_PARA.get(filial)
+                    if rot:
+                        soma(junto[rot], a)
+            if set(junto) != set(REFERENCIA):
+                continue                      # janela sem alguma das três
+            erros = {r: distancia(junto[r], REFERENCIA[r]) for r in REFERENCIA}
+            total = sum(erros.values()) / len(erros)
+            linhas.append((total, fatia[0], fatia[-1], n, erros, dict(junto)))
 
-    for erro, ini, fim, filial, a in sorted(linhas, key=lambda x: (x[0], x[1]))[:12]:
-        liquido = a["saida"] - a["entrada"]
-        # str() antes do :12 — formatar um date com largura devolve "12"
+    if not linhas:
+        print("  (nenhuma janela tem as três filiais)")
+        return
+
+    linhas.sort(key=lambda x: (x[0], x[1], x[3]))
+    for total, ini, fim, n, erros, _ in linhas[:10]:
         janela = f"{ini} a {fim}"
-        print(f'{janela:25} {filial:12} {liquido:>8} {a["valor"]:>14,.2f} '
-              f'{len(a["produtos"]):>5} {erro:>6.1%}  {nomes.get(filial,"")[:20]}')
+        print(f'{janela:26} {n:>4}  {erros["JARDINS"]:>7.1%} {erros["IGUATEMI"]:>7.1%} '
+              f'{erros["SITE"]:>7.1%}  {total:>6.1%}')
 
-    print("\nA linha de erro mais baixo diz, ao mesmo tempo, qual filial é o")
-    print("Site e qual período a planilha cobre. Erro acima de ~5% nas 12")
-    print("primeiras significa que o Site nao esta nesses eventos, ou que o")
-    print("periodo verdadeiro esta fora do intervalo varrido.")
+    total, ini, fim, n, erros, junto = linhas[0]
+    print(f"\nMelhor janela: {ini} a {fim} ({n} dias)\n")
+    cab2 = f'{"":10} {"peças API":>10} {"peças pl.":>10} {"valor API":>14} {"valor pl.":>14} {"prod":>10}'
+    print(cab2)
+    print("-" * len(cab2))
+    for rot, ref in REFERENCIA.items():
+        a = junto[rot]
+        liq = a["saida"] - a["entrada"]
+        print(f'{rot:10} {liq:>10} {ref["pecas"]:>10} {a["valor"]:>14,.2f} '
+              f'{ref["valor"]:>14,.2f} {len(a["produtos"]):>4} / {ref["produtos"]:<4}')
+
+    print("\nErro abaixo de ~5% nas três colunas fecha a validação da extração.")
+    print("Se o SITE bate e as lojas não, o período tem fim de semana de fora:")
+    print("o e-commerce fatura em dia útil, a loja vende no sábado.")
 
 
 def main(argv=None):
@@ -161,8 +189,15 @@ def main(argv=None):
     p.add_argument("--filiais", default="",
                    help="lista separada por vírgula; vazio mostra todas as que venderam")
     p.add_argument("--varrer", action="store_true",
-                   help="testa todas as janelas de 7 dias dentro do intervalo")
+                   help="testa todas as janelas dentro do intervalo")
+    p.add_argument("--janelas", default="5,6,7,8,9,10",
+                   help="tamanhos de janela a testar, em dias")
+    p.add_argument("--sem-cache", action="store_true",
+                   help="ignora o cache de dias e puxa tudo de novo")
     args = p.parse_args(argv)
+
+    mn.USAR_CACHE = not args.sem_cache
+    tamanhos = sorted({int(t) for t in args.janelas.split(",") if t.strip()})
 
     eventos, avisos = mn.conferir_eventos()
     mostra_eventos(eventos, avisos)
@@ -174,11 +209,12 @@ def main(argv=None):
     filtro = {f.strip().upper() for f in args.filiais.split(",") if f.strip()}
 
     ordem = list(mn.dias(args.de, args.ate))
-    if args.varrer and len(ordem) < JANELA:
-        print(f"\nIntervalo menor que {JANELA} dias — nada para varrer.")
+    if args.varrer and len(ordem) < min(tamanhos):
+        print(f"\nIntervalo menor que {min(tamanhos)} dias — nada para varrer.")
         return 1
 
-    print(f"\nPuxando {len(ordem)} dia(s), {len(eventos)} evento(s) por dia...")
+    cache = "sem cache" if args.sem_cache else f"cache em {mn.CACHE}/"
+    print(f"\nPuxando {len(ordem)} dia(s), {len(eventos)} evento(s) por dia ({cache})...")
     diarios = {}
     for d in ordem:
         diarios[d] = agrega_dia(d, eventos, filtro)
@@ -192,7 +228,7 @@ def main(argv=None):
     tabela(total, nomes)
 
     if args.varrer:
-        varre(diarios, ordem, nomes)
+        varre(diarios, ordem, tamanhos)
         return 0
 
     print("\nContra a planilha (export de 18/09) — compare peças e valor:")

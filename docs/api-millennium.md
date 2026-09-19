@@ -157,10 +157,24 @@ A melhor janela de 7 dias, contra a coluna SITE do export:
 Produtos distintos bate exato; a diferença é **uma peça de R$ 750,47** — um item
 só, de um produto que já estava no conjunto. Não é erro de regra nem de filial.
 
-**Efeito colateral do método:** a varredura achou o período do export junto com
-a filial. Três janelas consecutivas deram resultado idêntico, o que localiza a
-venda entre **segunda 31/08 e sexta 04/09** — o e-commerce não fatura no fim de
-semana, coerente com o evento ser FATURAMENTO e não pedido.
+**O período ainda não está fechado — e o erro de método vale registrar.** A
+primeira varredura pontuava **só o SITE**, e apontou 31/08–04/09. Rodando as
+três colunas nessa janela:
+
+| | API | Planilha | razão |
+|---|---|---|---|
+| SITE | 20 peças · R$ 24.798 | 21 · R$ 25.548 | 0,96 |
+| IGUATEMI | 97 peças · R$ 120.494 | 152 · R$ 183.579 | 0,64 |
+| JARDINS | 74 peças · R$ 89.962 | 112 · R$ 136.586 | 0,66 |
+
+As duas lojas em ~65%, com espantosa consistência entre si, e o Site em ~100%.
+Isso não é ruído: 31/08–04/09 é **segunda a sexta**. O e-commerce fatura em dia
+útil, então para ele a janela está completa; a loja de shopping vende no fim de
+semana, e a janela corta justamente os dois dias mais fortes.
+
+Ou seja: o Site batia ali **porque** o fim de semana estava de fora. Otimizar
+por uma coluna só escolheu a janela que mais escondia o buraco das outras duas.
+A varredura agora pontua as três juntas e testa vários tamanhos de janela.
 
 Referência completa do export, para comparações futuras:
 
