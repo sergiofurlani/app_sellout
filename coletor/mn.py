@@ -40,9 +40,9 @@ CATALOGO_ENTRADA = "/api/millenium/eventos/Eventos_InfluenciaEstoque"
 #
 # interno=None significa "ainda não sabemos, resolver pelo catálogo".
 EVENTOS = [
-    {"rotulo": "venda loja",            "interno": 10,   "codigo": None,    "sinal": +1},
-    {"rotulo": "venda loja (2)",        "interno": 30,   "codigo": None,    "sinal": +1},
-    {"rotulo": "venda loja (3)",        "interno": 204,  "codigo": None,    "sinal": +1},
+    {"rotulo": "venda",                 "interno": 10,   "codigo": "09",    "sinal": +1},
+    {"rotulo": "venda cupom fiscal",    "interno": 30,   "codigo": "00027", "sinal": +1},
+    {"rotulo": "venda cupom multiplo",  "interno": 204,  "codigo": "00206", "sinal": +1},
     {"rotulo": "devolucao varejo",      "interno": 12,   "codigo": "11",    "sinal": -1},
     {"rotulo": "venda e-commerce",      "interno": 25,   "codigo": "00003", "sinal": +1},
     {"rotulo": "devolucao e-commerce",  "interno": 23,   "codigo": "00002", "sinal": -1},

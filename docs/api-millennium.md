@@ -135,24 +135,34 @@ Atenção também ao rótulo: no export de estoque as lojas aparecem como
 `EGREY JDS` e `IGUATEMI`. Casar por `cod_filial` ou pelo interno, nunca pelo
 nome.
 
-### O Site: 00044 ou 00065?
+### O Site é o `00044` — confirmado em 19/09
 
-**O nome não decide.** `00044` traz a razão social da empresa, que não diz nada
-sobre canal; `00065` se chama literalmente SHOP ONLINE EGREY.
+O nome nunca ia decidir: `00044` traz a razão social da empresa, que não diz
+nada sobre canal, e `00065` se chama literalmente SHOP ONLINE EGREY.
 
-A favor do `00044`: é a filial que aparece com venda na amostra de 200
-documentos do levantamento anterior, e o `00065` não apareceu — o que sugere que
-`00065` está inativo ou é usado para outra coisa. Contra: o nome.
+Decidiu o número. Varredura de 35 dias (15/08 a 18/09), com os eventos de
+e-commerce já incluídos:
 
-**Decide no número.** `coletor/valida_site.py` puxa a venda por filial do período
-e compara com o que a planilha traz. No export de 18/09:
+- **`00044` aparece com venda**: 333 linhas, 181 peças líquidas, R$ 209.801,29.
+- **`00065` não aparece em nenhum dia.** Cadastro morto, como o negócio dizia.
 
-| | |
-|---|---|
-| Linhas | 45 |
-| Peças líquidas | 21 (34 de saída, 13 de devolução) |
-| Valor | R$ 25.548,44 |
-| Produtos distintos | 35 |
+A melhor janela de 7 dias, contra a coluna SITE do export:
+
+| | API (31/08 a 04/09) | Planilha |
+|---|---|---|
+| Peças líquidas | 20 | 21 |
+| Valor | R$ 24.797,97 | R$ 25.548,44 |
+| Produtos distintos | **35** | **35** |
+
+Produtos distintos bate exato; a diferença é **uma peça de R$ 750,47** — um item
+só, de um produto que já estava no conjunto. Não é erro de regra nem de filial.
+
+**Efeito colateral do método:** a varredura achou o período do export junto com
+a filial. Três janelas consecutivas deram resultado idêntico, o que localiza a
+venda entre **segunda 31/08 e sexta 04/09** — o e-commerce não fatura no fim de
+semana, coerente com o evento ser FATURAMENTO e não pedido.
+
+Referência completa do export, para comparações futuras:
 
 | | JARDINS | IGUATEMI | SITE |
 |---|---|---|---|
@@ -161,12 +171,23 @@ e compara com o que a planilha traz. No export de 18/09:
 | Valor | R$ 136.585,80 | R$ 183.579,10 | R$ 25.548,44 |
 | Produtos distintos | 118 | 101 | 35 |
 
-A filial cujo líquido e valor baterem com a coluna SITE é o e-commerce. Se
-nenhuma bater, o período do export não é o que foi consultado.
+Linhas não são comparáveis: a planilha conta linha de quantidade zero (pedido),
+o coletor não. Comparar peças, valor e produtos.
 
 ```
-python -m coletor.valida_site --de 2026-09-11 --ate 2026-09-17
+python -m coletor.valida_site --de 2026-08-31 --ate 2026-09-04
+python -m coletor.valida_site --de 2026-08-15 --ate 2026-09-18 --varrer
 ```
+
+### ELENA ES só devolve
+
+Nos 35 dias: 0 peças de saída, 32 de devolução, R$ -30.026,00. A venda de
+atacado sai por eventos que não estão nesta lista, mas a **devolução volta pelo
+evento de varejo** — então ela entra na extração sem que nada de venda entre.
+
+Isso confirma a D12 pelo motivo contrário ao esperado: ELENA ES tem que ser
+excluída **pelo nome**, porque ignorá-la não a mantém de fora — mantém só um
+saldo negativo solto.
 
 Lembrando que pela API a devolução vem **positiva** com `tipo_operacao = "E"`,
 enquanto a planilha já traz negativa — daí as 13 linhas negativas do SITE.

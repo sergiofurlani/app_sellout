@@ -125,7 +125,7 @@ def varre(diarios, ordem, nomes) -> None:
     print(f"\nJanelas de {JANELA} dias, ordenadas pela distância do SITE "
           f"({ref['pecas']} peças / R$ {ref['valor']:,.2f}):\n")
     cab = (f'{"janela":25} {"filial":12} {"líquido":>8} {"valor":>14} '
-           f'{"prod":>5} {"erro":>7}')
+           f'{"prod":>5} {"erro":>7}  nome')
     print(cab)
     print("-" * len(cab))
 
@@ -141,9 +141,11 @@ def varre(diarios, ordem, nomes) -> None:
                 continue
             linhas.append((distancia(a, ref), fatia[0], fatia[-1], filial, a))
 
-    for erro, ini, fim, filial, a in sorted(linhas)[:12]:
+    for erro, ini, fim, filial, a in sorted(linhas, key=lambda x: (x[0], x[1]))[:12]:
         liquido = a["saida"] - a["entrada"]
-        print(f'{ini} a {fim:12} {filial:12} {liquido:>8} {a["valor"]:>14,.2f} '
+        # str() antes do :12 — formatar um date com largura devolve "12"
+        janela = f"{ini} a {fim}"
+        print(f'{janela:25} {filial:12} {liquido:>8} {a["valor"]:>14,.2f} '
               f'{len(a["produtos"]):>5} {erro:>6.1%}  {nomes.get(filial,"")[:20]}')
 
     print("\nA linha de erro mais baixo diz, ao mesmo tempo, qual filial é o")
