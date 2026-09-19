@@ -29,7 +29,14 @@ from datetime import date, timedelta
 
 from . import mn
 
-# O que a aba Vendas trouxe no export de 18/09/2026, para comparar.
+# O que a aba Vendas trouxe, para comparar.
+#
+# O export foi puxado em **08/09/2026 e cobre até 07/09** (feriado em São Paulo,
+# com as lojas abertas). A rodada manual anterior tinha sido em 31/08, então o
+# período é 31/08 a 07/09 — oito dias, com dois fins de semana de loja dentro.
+# Chegou junto com as planilhas em 18/09; a data em que o arquivo chegou não é
+# a data do que ele contém, e confundir as duas custou duas varreduras.
+#
 # "linhas" conta as linhas cruas da aba, inclusive as de quantidade zero, que o
 # script ignora — então compare **peças e valor**, não linhas.
 REFERENCIA = {
