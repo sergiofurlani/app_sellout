@@ -27,6 +27,27 @@ SENHA = os.environ.get("EGREY_API_SENHA", "")
 
 VENDAS = "/api/millenium/movimentacao/vendas_consulta_completa"
 FILIAIS = "/api/millenium/filiais/Lista_Filiais_SemFiltro"
+CATALOGO = "/api/millenium/eventos/ListaEventosPorTipo"
+CATALOGO_ENTRADA = "/api/millenium/eventos/Eventos_InfluenciaEstoque"
+
+# Os eventos que o sellout usa, com os DOIS códigos.
+#
+# O parâmetro EVENTO da API recebe o INTERNO. O código do ERP é o que aparece
+# nas telas e o que as pessoas dizem em voz alta. Os dois colidem: interno 12 é
+# devolução de varejo, código "12" é recebimento de transferência. Manter os
+# dois lado a lado e conferir um contra o outro é o que impede a troca
+# silenciosa — ver conferir_eventos().
+#
+# interno=None significa "ainda não sabemos, resolver pelo catálogo".
+EVENTOS = [
+    {"rotulo": "venda loja",            "interno": 10,   "codigo": None,    "sinal": +1},
+    {"rotulo": "venda loja (2)",        "interno": 30,   "codigo": None,    "sinal": +1},
+    {"rotulo": "venda loja (3)",        "interno": 204,  "codigo": None,    "sinal": +1},
+    {"rotulo": "devolucao varejo",      "interno": 12,   "codigo": "11",    "sinal": -1},
+    {"rotulo": "venda e-commerce",      "interno": None, "codigo": "00003", "sinal": +1},
+    {"rotulo": "devolucao e-commerce",  "interno": 23,   "codigo": "00002", "sinal": -1},
+    {"rotulo": "troca/cupom e-commerce","interno": 27,   "codigo": "00004", "sinal": -1},
+]
 
 EVENTOS_VENDA = (10, 30, 204)
 EVENTO_DEVOLUCAO = 12
@@ -97,6 +118,75 @@ def parse_data(valor):
 def filiais() -> list[dict]:
     """De-para das filiais: cod_filial (texto, do ERP) x filial (inteiro, interno)."""
     return valores(requisita(FILIAIS))
+
+
+def catalogo_eventos() -> list[dict]:
+    """Todos os eventos, com interno (`evento`) e do ERP (`codigo`).
+
+    `ListaEventosPorTipo` traz entrada e saída; se ela recusar sem parâmetro,
+    cai para `Eventos_InfluenciaEstoque`, que só tem entrada — melhor pouco
+    que nada, e o aviso diz o que ficou de fora.
+    """
+    try:
+        linhas = valores(requisita(CATALOGO))
+        if linhas:
+            return linhas
+    except Falha:
+        pass
+    return valores(requisita(CATALOGO_ENTRADA))
+
+
+def conferir_eventos(tabela=None) -> tuple[list[dict], list[str]]:
+    """Resolve o interno pelo código e confere os que já vinham preenchidos.
+
+    Devolve (eventos_resolvidos, avisos). Um evento que não resolve fica de
+    fora com aviso, em vez de virar chamada com número errado.
+    """
+    tabela = tabela or EVENTOS
+    avisos = []
+    try:
+        catalogo = catalogo_eventos()
+    except Falha as e:
+        avisos.append(f"catalogo de eventos indisponivel ({e}); usando so os internos fixos")
+        catalogo = []
+
+    por_codigo, por_interno = {}, {}
+    for ev in catalogo:
+        cod = str(ev.get("codigo") or ev.get("CODIGO") or "").strip()
+        interno = ev.get("evento", ev.get("EVENTO"))
+        desc = (ev.get("descricao") or ev.get("DESCRICAO") or "").strip()
+        if cod:
+            por_codigo[cod] = (interno, desc)
+        if interno is not None:
+            por_interno[interno] = (cod, desc)
+
+    resolvidos = []
+    for linha in tabela:
+        ev = dict(linha)
+        rot, interno, cod = ev["rotulo"], ev["interno"], ev["codigo"]
+
+        if cod and cod in por_codigo:
+            do_catalogo, desc = por_codigo[cod]
+            if interno is None:
+                ev["interno"] = do_catalogo
+            elif do_catalogo != interno:
+                avisos.append(
+                    f"{rot}: codigo {cod} aponta para o evento interno {do_catalogo}, "
+                    f"mas a tabela diz {interno}. Nao vou adivinhar — confira antes de usar."
+                )
+                continue
+            ev["descricao"] = desc
+        elif cod:
+            avisos.append(f"{rot}: codigo {cod} nao esta no catalogo lido")
+
+        if ev["interno"] is None:
+            avisos.append(f"{rot}: sem evento interno, ficou de fora da extracao")
+            continue
+        if "descricao" not in ev and ev["interno"] in por_interno:
+            ev["codigo"], ev["descricao"] = por_interno[ev["interno"]]
+        resolvidos.append(ev)
+
+    return resolvidos, avisos
 
 
 def documentos_do_dia(dia: date, eventos=EVENTOS_VENDA + (EVENTO_DEVOLUCAO,)) -> list[dict]:

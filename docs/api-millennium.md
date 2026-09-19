@@ -373,6 +373,27 @@ Os candidatos, em ordem de probabilidade:
 O par `00107` (LOJAS) x `00123` (ATACADO) é o mesmo corte varejo/atacado que o
 negócio descreve. Isso é indício forte, não prova: só a chamada decide.
 
+### O e-commerce tem eventos próprios — e isso escondia o Site
+
+Primeira rodada do `valida_site`, 19/09: voltaram **só IGUATEMI, EGREY JDS e
+ELENA ES**. Nenhuma linha de Site — nem `00044`, nem `00065`.
+
+A causa: o coletor perguntava por 10, 30, 204 e 12, que vieram do estudo de
+**venda de loja**. O e-commerce fatura por evento separado:
+
+| código | descrição | sinal |
+|---|---|---|
+| `00003` | FATURAMENTO E-COMMERCE | venda |
+| `00002` | DEVOLUÇÃO DE VENDA E-COMMERCE | devolução |
+| `00004` | DEVOLUÇÃO TROCA/CUPOM E-COMMERCE | devolução |
+
+Lição geral: **filtrar por evento é filtrar por canal sem perceber.** Uma lista
+de eventos incompleta não dá erro nem vem vazia — vem plausível, faltando um
+canal inteiro. Foi assim que o Site sumiu sem ninguém notar.
+
+O catálogo completo, com entrada e saída, sai de
+`eventos/ListaEventosPorTipo` (`Eventos_InfluenciaEstoque` só traz entrada).
+
 ### A armadilha do código do evento
 
 O par interno x ERP morde aqui de um jeito especialmente feio:
