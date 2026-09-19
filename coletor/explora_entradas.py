@@ -46,6 +46,21 @@ CANDIDATOS = {
 
 LOJAS = ("IGUATEMI", "JDS", "JARDINS")
 
+# A aba Producao do mesmo export (31/08 a 07/09), para comparar.
+#
+# Cuidado com ela: mistura **peça acabada** (positiva, tamanhos 34-46/M/P) com
+# **insumo consumido** (negativa, tamanho U) — tecido em metros, botão,
+# etiqueta. São famílias de código diferentes (000076, 000149, 000151 contra
+# 239064, 334066), então não colidem com produto; mas somar a coluna inteira dá
+# 484 em vez de 826, e o erro passaria por "produção baixa nessa semana".
+REFERENCIA_PRODUCAO = {
+    "pecas": 826,          # só peça acabada
+    "linhas": 181,
+    "produtos": 18,
+    "produto_cor": 29,
+    "insumo": -342,        # o que a coluna traz de negativo, fora da conta
+}
+
 
 def dia(texto: str) -> date:
     return date.fromisoformat(texto)
@@ -161,8 +176,19 @@ def main(argv=None):
     por_grade(args.de, args.ate)
 
     titulo("O que fazer com isso")
-    print("""
-  Manda a saida inteira. O que ela responde:
+    r = REFERENCIA_PRODUCAO
+    print(f"""
+  Referencia da aba Producao no mesmo periodo (31/08 a 07/09):
+
+    peca acabada   {r['pecas']} pecas em {r['linhas']} linhas,
+                   {r['produtos']} produtos, {r['produto_cor']} produto+cor
+    insumo         {r['insumo']} (tecido, botao, etiqueta — FORA da conta)
+
+  A producao chega INTEIRA na Elena, varejo e atacado juntos. Entao a
+  transferencia ELENA ES -> lojas tem que ser um PEDACO dessas {r['pecas']}
+  pecas, nunca mais que isso. Se der mais, a leitura esta errada.
+
+  O que a saida responde:
 
   - Se (2) mostrar ELENA ES -> IGUATEMI / EGREY JDS com quantidade, a tese da
     D13 esta certa e o Estoque inicial vira dado derivado.

@@ -426,11 +426,26 @@ def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None) -> Font
     pro = wb["Producao"]
     c = prepara(pro, COLUNAS_PRODUCAO, "qtde", "Quantidade")
     f.producao = defaultdict(lambda: defaultdict(int))
+    # A aba mistura peça acabada com insumo consumido: tecido em metros, botão
+    # e etiqueta entram com quantidade NEGATIVA e tamanho U. Hoje esses códigos
+    # (000076, 000149, 000151) não existem nas abas de trabalho, então não
+    # chegam a fazer estrago — mas se um dia colidirem com um código de produto,
+    # a produção seria subtraída em silêncio. Produção negativa não existe.
+    negativas = 0
     for r in range(2, pro.max_row + 1):
         cod = norm_codigo(pro.cell(r, c["codigo"]).value)
-        if cod:
-            f.producao[cod][nrm(pro.cell(r, c["cor"]).value)] += \
-                qtd_de(pro, "Producao", r, c["qtde"], "Quantidade")
+        if not cod:
+            continue
+        q = qtd_de(pro, "Producao", r, c["qtde"], "Quantidade")
+        if q < 0:
+            negativas += 1
+            continue
+        f.producao[cod][nrm(pro.cell(r, c["cor"]).value)] += q
+    if negativas:
+        f.avisos.append(
+            f"Producao: {negativas} linha(s) com quantidade negativa ignorada(s) "
+            f"— sao insumo consumido (tecido, botao, etiqueta), nao peca."
+        )
 
     prd = wb["Produtos"]
     c = colunas_da_fonte(prd, COLUNAS_PRODUTOS)
