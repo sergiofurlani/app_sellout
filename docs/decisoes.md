@@ -135,9 +135,18 @@ linha comercial. Esses blocos não têm correspondente no cadastro e seguem send
 atributo do produto, editável no app.
 
 **O que isso destrava:** código que aparece em dois blocos — `330043` está em
-AW26 e SS27 — deixa de ser ambiguidade. O cadastro diz qual é a coleção certa,
-a linha daquele bloco fica com a transferência e a outra é marcada como sobra
-de bloco antigo, em vez de aparecer zerada como se faltasse peça.
+AW26 e SS27 — deixa de ser ambiguidade. O cadastro diz `AW26`, a linha daquele
+bloco fica com a transferência e a outra é marcada como sobra de bloco antigo,
+em vez de aparecer zerada como se faltasse peça.
+
+**Onde o cadastro não resolve:** o `328028 CAMISA CLÁSSICA` está nos mesmos dois
+blocos e o cadastro diz `SS24`. Não é erro — produto que volta a ser feito
+mantém a coleção de origem. Aí o desempate não existe, e a conferência diz
+exatamente isso na coluna Obs em vez de escolher uma linha por sorteio.
+Confirmado no cadastro: 3.976 produtos, e a coleção só vira sigla quando é
+estação com ano. `ATEMPORAL`, `PERENE` e `INDEFINIDO` não são estação e nunca
+vão virar `SS27` — estão listadas em `SEM_ESTACAO` para não parecerem mapa
+faltando.
 
 ## D12 · O e-commerce não tem estoque próprio
 

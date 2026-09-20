@@ -144,8 +144,15 @@ def divide(codigo, linhas_do_codigo, saldo, colecao_erp=None, colecoes_das_linha
                         "" if l == certa
                         else f"cadastro do ERP diz {colecao_erp}; linha de outro bloco")
                     for l, _c in linhas_do_codigo}
-        obs = (f"codigo em {len(linhas_do_codigo)} linhas sem vermelho; "
-               f"sem cadastro para desempatar — total do codigo: {total:,.0f}")
+        if colecao_erp:
+            # O cadastro respondeu, mas com uma coleção que não é nenhum dos
+            # blocos — o `328028 CAMISA CLÁSSICA` é SS24 e aparece em AW26 e
+            # SS27. Produto que voltou a ser feito mantém o cadastro antigo.
+            obs = (f"cadastro do ERP diz {colecao_erp}, que nao e nenhum dos "
+                   f"blocos desta planilha — total do codigo: {total:,.0f}")
+        else:
+            obs = (f"codigo em {len(linhas_do_codigo)} linhas sem vermelho; "
+                   f"sem cadastro para desempatar — total do codigo: {total:,.0f}")
         return {l: (total if l == sem_vermelho[0] else 0, obs)
                 for l, _c in linhas_do_codigo}
 

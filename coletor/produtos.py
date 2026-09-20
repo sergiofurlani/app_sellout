@@ -39,7 +39,14 @@ LISTA = "/api/millenium/produtosac/Lista"
 ESTACAO = {
     "VERAO": "SS", "VERÃO": "SS", "SS": "SS", "PRIMAVERA": "SS",
     "INVERNO": "AW", "AW": "AW", "OUTONO": "AW",
+    "ALTO INVERNO": "AW", "ALTO VERAO": "SS", "ALTO VERÃO": "SS",
 }
+
+# Coleções que não são estação: não ganham sigla e não deveriam ganhar. O
+# produto atemporal volta a ser feito todo ano mantendo o cadastro antigo —
+# é por isso que o `328028 CAMISA CLÁSSICA` é SS24 e mesmo assim aparece nos
+# blocos de 2026 e 2027 da planilha.
+SEM_ESTACAO = {"ATEMPORAL", "PERENE", "INDEF - INDEFINIDO", "INDEFINIDO", "INDEF"}
 
 CAMPOS = ["codigo", "interno", "colecao", "subcolecao", "sigla", "referencia", "descricao",
           "tipo", "grupo", "departamento", "marca", "divisao", "categoria",
@@ -117,6 +124,19 @@ def carrega(filtro_colecao: str | None = None, extras: dict | None = None,
     return saida
 
 
+def motivo(p: dict) -> str:
+    """Por que este produto ficou sem sigla. Separa o que é para arrumar do
+    que é assim mesmo — 'atemporal' nunca vai virar SS27."""
+    col = (p["colecao"] or "").upper()
+    if not col:
+        return "sem coleção no cadastro"
+    if col in SEM_ESTACAO or col.startswith("INDEF"):
+        return "coleção não é estação (atemporal, perene, indefinido)"
+    if col not in ESTACAO:
+        return "coleção fora do mapa ESTACAO"
+    return "coleção conhecida, mas a subcoleção não tem ano"
+
+
 def por_codigo(produtos: list[dict]) -> dict[str, str]:
     """codigo -> sigla da coleção, para quem só quer o de-para."""
     return {p["codigo"]: p["sigla"] for p in produtos if p["sigla"]}
@@ -163,8 +183,16 @@ def main(argv=None):
 
     sem = [p for p in produtos if not p["sigla"]]
     if sem:
-        print(f"\n{len(sem)} produto(s) sem sigla montada. Se a coleção deles "
-              "entra no\nsellout, acrescente o nome em ESTACAO, em coletor/produtos.py.")
+        print(f"\n{len(sem)} produto(s) sem sigla. Por quê:")
+        motivos = Counter(motivo(p) for p in sem)
+        for m, n in motivos.most_common():
+            print(f"  {n:>6}  {m}")
+        desconhecidas = sorted({p["colecao"] for p in sem
+                                if motivo(p).startswith("coleção fora")})
+        if desconhecidas:
+            print("\n  Acrescente em ESTACAO (coletor/produtos.py) as que "
+                  "entram no sellout:")
+            print("    " + ", ".join(desconhecidas[:15]))
 
     if args.codigos:
         print("\ncódigos pedidos:")
