@@ -400,23 +400,32 @@ Medido contra o evento 108 (faturamento de atacado) na mesma semana:
 | destino | peças | % da produção |
 |---|---:|---:|
 | lojas (evento 106) | 502 | 66% |
-| atacado (evento 108) | 61 | 8% |
-| ainda na Elena | 199 | 26% |
+| atacado já faturado (evento 108) | 61 | 8% |
+| parado na Elena | 199 | 26% |
 
-**O atacado é a menor parte.** A explicação intuitiva — "a produção inclui o
-atacado" — está certa mas é secundária: só 8% saiu para cliente de atacado
-naquela semana. Os outros 26% simplesmente **ainda não tinham sido
-despachados** e estavam parados na Elena.
+**As 199 peças paradas na Elena são estoque de atacado**, esperando
+faturamento — não são peças a caminho das lojas. Explicado pelo negócio em
+20/09, e é o que corrige a leitura errada que este documento chegou a ter:
+eu havia classificado essa sobra como "ainda não despachada", como se fosse
+virar estoque de loja mais tarde. Não vira.
 
-São dois motivos independentes para a produção não servir como Estoque inicial,
-e o maior deles é de tempo, não de canal. Peça produzida na sexta e despachada
-na terça seguinte não estava em loja nenhuma quando o sellout foi calculado.
+Então a divisão é limpa: **das 762 peças produzidas, 502 são varejo e 260 são
+atacado** — 61 já faturadas e 199 ainda em estoque. A explicação simples, a que
+o negócio deu desde o começo, estava certa: a produção inclui o atacado, e por
+isso não serve como Estoque inicial de loja.
 
-Dois produtos confirmam isso ao contrário: `334017` recebeu 50 peças tendo
-produzido 51, mas mandou 20 para o atacado — despachou 19 a mais do que produziu
-na semana, de um lote anterior. `334096`, o mesmo, com 11. **Produção e
-despacho não fecham por semana em nenhum produto**, e é por isso que uma coluna
-nunca pôde substituir a outra, nem com ajuste.
+O que continua valendo da leitura por tempo é menor, mas real: produção e
+despacho não fecham na mesma semana. `334017` recebeu 50 peças tendo produzido
+51 e mandado 20 para o atacado — despachou 19 a mais do que produziu, de um
+lote anterior; `334096`, o mesmo, com 11. Por isso nenhum desconto aplicado
+sobre a coluna de produção resolveria: seria preciso saber **quando** cada peça
+saiu, e só a transferência tem isso.
+
+**A validar quando a extração de 9 meses rodar:** se nenhuma das 199 peças
+aparecer num evento 106 posterior, a regra está confirmada e o corte é
+definitivo — `106` é varejo, todo o resto é atacado. Se aparecer, existe um
+caminho de Elena para loja com atraso, e o Estoque inicial precisa acompanhar a
+data em vez de fechar por semana.
 
 **Como o arquivo chega:** o MN só responde dentro da rede da Egrey, então o app
 na nuvem nunca vai buscá-lo. O coletor puxa lá e o CSV sobe junto com as
