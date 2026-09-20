@@ -25,6 +25,7 @@ aba marca esse caso em vez de deixar parecer diferença real.
 from __future__ import annotations
 
 import argparse
+import pathlib
 from collections import defaultdict
 from datetime import date
 
@@ -287,7 +288,22 @@ def main(argv=None):
 
     mn.USAR_CACHE = not args.sem_cache
     colecoes = [c.strip().upper() for c in args.colecoes.split(",") if c.strip()]
-    saida = args.saida or args.arquivo.replace(".xlsx", " - conferencia.xlsx")
+
+    # O caminho é conferido ANTES da extração. Ela leva minutos e vai à rede;
+    # descobrir no fim que o arquivo não existe joga tudo fora. Os `<>` são
+    # tirados porque é o erro que a pessoa comete ao copiar um exemplo com
+    # marcador de lugar — e o `.xlsx>` resultante dá um erro do openpyxl que
+    # não diz nada sobre a causa.
+    caminho = pathlib.Path(args.arquivo.strip().strip("<>").strip('"').strip("'"))
+    if not caminho.exists():
+        print(f"\nNao encontrei o arquivo: {caminho}")
+        if args.arquivo != str(caminho):
+            print(f"(li como {caminho} depois de tirar aspas e <>)")
+        print("Passe o caminho da planilha, sem < >. Exemplo:")
+        print('  python -m coletor.conferencia "C:\\caminho\\sellout geral.xlsx" '
+              "--de 2026-01-01 --ate 2026-09-07")
+        return 1
+    saida = args.saida or str(caminho.with_name(caminho.stem + " - conferencia.xlsx"))
 
     print(f"\nPuxando o evento {EVENTO} de {args.de} a {args.ate}...")
     saldo, primeira, docs = transferencias(args.de, args.ate)
@@ -295,7 +311,7 @@ def main(argv=None):
     print(f"  {docs} documento(s), {len(saldo)} combinacao(oes) produto+cor, "
           f"{pecas:,.0f} peca(s)")
 
-    r = monta(args.arquivo, saida, saldo, primeira, colecoes, args.de, args.ate)
+    r = monta(str(caminho), saida, saldo, primeira, colecoes, args.de, args.ate)
     print(f"\n  {saida}")
     print(f"  planilha {r['total_planilha']:,.0f}  x  ERP {r['total_erp']:,.0f}  "
           f"(diferenca {r['total_erp'] - r['total_planilha']:+,.0f})")
