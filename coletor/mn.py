@@ -61,14 +61,19 @@ EVENTOS = [
     {"rotulo": "troca/cupom e-commerce","interno": 27,   "codigo": "00004", "sinal": -1},
 ]
 
-# Entrada de estoque na loja — candidatos com movimento em 2026 (D13).
-# 105 tem 922 movimentos no ano, de longe o maior evento de entrada.
+# Entrada de estoque na loja — candidatos com movimento em 2026 (D13), em ordem
+# de movimento no ano. Nenhum está confirmado: é lista de sondagem.
 EVENTOS_ENTRADA = [
+    {"rotulo": "transf. estoque PA",        "interno": 4,   "codigo": "05",    "sinal": +1},
+    {"rotulo": "vendas entre filiais",      "interno": 106, "codigo": "00108", "sinal": +1},
     {"rotulo": "receb. compra P.A (lojas)", "interno": 105, "codigo": "00107", "sinal": +1},
-    {"rotulo": "receb. compra elenatimes",  "interno": 104, "codigo": "00106", "sinal": +1},
-    {"rotulo": "receb. compra P.A",         "interno": 103, "codigo": "00105", "sinal": +1},
-    {"rotulo": "retorno de producao",       "interno": 7,   "codigo": None,    "sinal": +1},
     {"rotulo": "fat. atacado elenatimes",   "interno": 108, "codigo": "00110", "sinal": -1},
+    {"rotulo": "retorno P.A varejo",        "interno": 114, "codigo": "00120", "sinal": -1},
+    {"rotulo": "retorno de producao",       "interno": 7,   "codigo": None,    "sinal": +1},
+    {"rotulo": "entrada simples produto",   "interno": 0,   "codigo": "01",    "sinal": +1},
+    {"rotulo": "receb. compra elenatimes",  "interno": 104, "codigo": "00106", "sinal": +1},
+    {"rotulo": "saida simples PA",          "interno": 2,   "codigo": "03",    "sinal": -1},
+    {"rotulo": "receb. compra P.A",         "interno": 103, "codigo": "00105", "sinal": +1},
 ]
 
 EVENTOS_VENDA = (10, 30, 204)

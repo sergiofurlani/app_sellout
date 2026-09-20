@@ -14,55 +14,82 @@ completo use `eventos/ListaEventosPorTipo`.
 
 ---
 
-## Os 21 eventos com movimento em 2026
+## Os 51 eventos com movimento em 2026
 
-Lido do banco em 20/09. **Metade do catálogo é cadastro antigo.** Um evento que
-existe e nunca é usado não é candidato a nada — e foi contra essa lista que a
-melhor hipótese do dia anterior morreu.
+Lido do banco em 20/09. **Esta lista substitui uma primeira que veio errada** —
+e a versão errada já tinha me feito escrever duas conclusões falsas neste mesmo
+documento. Ficam registradas abaixo, porque o erro é instrutivo.
+
+Os maiores, que é onde mora o significado:
 
 | interno | descrição | movimentos |
 |---:|---|---:|
 | 30 | VENDA CUPOM FISCAL | 6.141 |
+| 14 | REMESSA DE CONSIGNAÇÃO | 3.433 |
+| 19 | ACERTO DE CONSIGNAÇÃO | 2.818 |
+| **4** | **TRANSFERÊNCIA DE ESTOQUE PA** | **2.013** |
 | 25 | FATURAMENTO E-COMMERCE | 1.542 |
+| **106** | **VENDAS ENTRE FILIAIS** | **1.186** |
 | 12 | DEVOLUÇÃO DE VENDA VAREJO | 1.179 |
 | **105** | **RECEBIMENTO DE COMPRA P.A (LOJAS)** | **922** |
+| 109 | REMESSA SIMBOLICA ELENATIMES SP | 585 |
 | 108 | FATURAMENTO ATACADO ELENATIMES ES | 575 |
-| 7 | RETORNO DE PRODUCAO | 501 |
-| 104 | RECEBIMENTO DE COMPRA ELENATIMES ES | 290 |
+| 114 | RETORNO P.A ELENATIMES (VAREJO) | 516 |
+| 7 | RETORNO DE PRODUCAO | 504 |
+| 107 | RETORNO P.A ELENATIMES (ATACADO) | 309 |
+| **0** | **ENTRADA SIMPLES DE ESTOQUE PRODUTO** | **312** |
+| 115 | RECEBIMENTO ELENATIMES (ATACADO) | 306 |
+| 102 | REMESSA M.P ELENATIMES ES - SP | 295 |
+| 104 | RECEBIMENTO DE COMPRA ELENATIMES ES | 292 |
 | 23 | DEVOLUÇÃO DE VENDA E-COMMERCE | 245 |
 | 56 | VENDA NFCE | 232 |
 | 10 | VENDA | 192 |
 | 202 | VENDA OUTLET | 173 |
+| 48 | RETORNO DE CONSERTO FORNECEDORES | 151 |
+| 6 | REMESSA PARA INDUSTRIALIZAÇÃO | 120 |
+| 1 | ENTRADA SIMPLES DE MATÉRIA PRIMA | 104 |
+| **2** | **SAÍDA SIMPLES PA** | **98** |
 | 27 | DEVOLUÇÃO TROCA/CUPOM E-COMMERCE | 98 |
+| 15 | REMESSA PARA CONSERTO FORNECEDOR | 70 |
 | 103 | RECEBIMENTO DE COMPRA P.A | 54 |
-| 16 | RECEBIMENTO DE COMPRA M.P. | 36 |
-| 19 | ACERTO DE CONSIGNAÇÃO | 18 |
-| 9 | FATURAMENTO DE PEDIDO DE VENDA | 12 |
-| 34 | ENTRADA DE CONSIGNACAO | 7 |
-| 204 | VENDA CUPOM FISCAL - MÚLTIPLO VENDEDOR | 7 |
-| 28 | VENDA VAREJO LOJA | 6 |
-| 17 | DEVOLUÇÃO PARA FORNECEDOR P.A. | 1 |
-| 201 | FATURAMENTO DE BAZAR | 1 |
 
-### Três conclusões imediatas
+Cauda longa: 21 (40), 32 (40), 16 (37), 52 (34), 38 (26), 121 (17), 9 (12),
+17/18 (11 e 1), 207 (11), 22 (11), 34 (10), 110 (9), 204 (7), 28 (6), 8 e 11 (4),
+50 (4), 117 (4), 206 (3), 14-bis/5 (2), 3 (1), 201 (1), 203 (1), **208 (1)**.
 
-**O `208 CD-04 TRANSFERÊNCIA MATRIZ PARA LOJAS ( VENDA )` não tem movimento em
-2026.** Nem o `13`, nem o `106 VENDAS ENTRE FILIAIS`, nem o `203`. Eram a
-hipótese mais bonita do projeto — o nome dizia literalmente o que o negócio
-descrevia — e são cadastro morto. Nome bom não é uso.
+### O que essa correção derruba
 
-**O que entra peça na loja é o `105 RECEBIMENTO DE COMPRA P.A (LOJAS)`, com 922
-movimentos** — o maior evento de entrada do ano, e o primeiro palpite lá do
-começo. A Elena fatura (`108`, 575) e a loja recebe (`105`, 922); a produção
-entra na Elena pelo `7 RETORNO DE PRODUCAO` (501).
+**Errado: "nenhum evento de ajuste manual rodou em 2026."** Rodou muito.
+`TRANSFERÊNCIA DE ESTOQUE PA` tem **2.013 movimentos**, o quarto maior do ano;
+`ENTRADA SIMPLES DE ESTOQUE PRODUTO` tem 312 e `SAÍDA SIMPLES PA`, 98. Isso
+**reabre o item 2 da D13**: existe peça mudando de saldo por fora de compra,
+produção e nota. Enquanto não se souber o que passa por aí, o Estoque inicial
+derivado não fecha sozinho.
 
-**Nenhum evento de ajuste manual foi usado em 2026.** `ENTRADA SIMPLES DE
-ESTOQUE PRODUTO`, `SAÍDA SIMPLES PA` e `TRANSFERÊNCIA DE ESTOQUE PA` estão
-zerados. Isso fecha o item 2 da D13: não há entrada de loja por fora, então o
-Estoque inicial derivado pode fechar sozinho.
+**Errado: "`106 VENDAS ENTRE FILIAIS` é cadastro morto."** Tem 1.186 movimentos
+— e é, literalmente, o nome que o negócio usa para descrever a remessa da Elena
+para as lojas.
 
-E `FATURAMENTO E-COMMERCE 00040` também está zerado — **a única filial de
-e-commerce ativa é a `00044`**, confirmado pelo negócio.
+**Continua valendo, por outro motivo:** o `208 TRANSFERÊNCIA MATRIZ PARA LOJAS
+( VENDA )` foi usado **uma vez** no ano inteiro. O nome perfeito segue não sendo
+uso.
+
+### Os candidatos, agora
+
+| interno | descrição | mov. | por que |
+|---:|---|---:|---|
+| 106 | VENDAS ENTRE FILIAIS | 1.186 | o termo que o negócio usa; lado da saída |
+| 105 | RECEBIMENTO DE COMPRA P.A (LOJAS) | 922 | único com (LOJAS); lado da entrada |
+| 4 | TRANSFERÊNCIA DE ESTOQUE PA | 2.013 | transferência direta, sem nota |
+| 114 | RETORNO P.A ELENATIMES (VAREJO) | 516 | o caminho de volta, subtrai da loja |
+| 0 | ENTRADA SIMPLES DE ESTOQUE PRODUTO | 312 | ajuste manual de entrada |
+
+`106` (saída) com `105` (entrada) formam o par mais coerente: a Elena "vende
+entre filiais", a loja "recebe compra P.A (LOJAS)". A diferença de 264
+movimentos no ano cabe no que a Elena manda para outros destinos que não as
+duas lojas.
+
+Só a chamada decide. Nenhum nome, nenhuma contagem — a chamada.
 
 ## Venda de varejo
 
@@ -71,13 +98,13 @@ e-commerce ativa é a `00044`**, confirmado pelo negócio.
 | 10 | `09` | VENDA | **sim** |
 | 30 | `00027` | VENDA CUPOM FISCAL | **sim** |
 | 204 | `00206` | VENDA CUPOM FISCAL - MÚLTIPLO VENDEDOR | **sim** |
-| 28 | `00025` | VENDA VAREJO LOJA | **a testar** |
-| 56 | `23` | VENDA NFCE | **a testar** |
-| 9 | `08` | FATURAMENTO DE PEDIDO DE VENDA | a testar |
-| 202 | `00203` | VENDA OUTLET | filial fora do sellout |
-| 201 | `00201` | FATURAMENTO DE BAZAR | filial fora do sellout |
+| 28 | `00025` | VENDA VAREJO LOJA | **sim** (6 mov. no ano) |
+| 56 | `23` | VENDA NFCE | **sim** (232 mov. no ano) |
+| 9 | `08` | FATURAMENTO DE PEDIDO DE VENDA | sim (12 mov.) |
+| 202 | `00203` | VENDA OUTLET | incluído; a filial é que filtra |
+| 201 | `00201` | FATURAMENTO DE BAZAR | incluído; a filial é que filtra |
 | 12 | `11` | DEVOLUÇÃO DE VENDA VAREJO | **sim** (subtrai) |
-| 24 | `102` | RETORNO DE PRODUTO COM FINANCEIRO COM ESTOQUE | a testar |
+| 24 | `102` | RETORNO DE PRODUTO COM FINANCEIRO COM ESTOQUE | não — zero movimento |
 
 Os três primeiros vieram do estudo do Projeto Conversão. **`VENDA VAREJO LOJA` e
 `VENDA NFCE` nunca foram testados** — e a validação de 19/09 deixou faltando 2
@@ -88,33 +115,20 @@ peças em JARDINS e 1 no SITE. É o primeiro lugar a procurar.
 | interno | código | descrição | no sellout |
 |---:|---|---|---|
 | 25 | `00003` | FATURAMENTO E-COMMERCE | **sim** |
-| 120 | `00129` | FATURAMENTO E-COMMERCE 00040 | **a testar** |
+| 120 | `00129` | FATURAMENTO E-COMMERCE 00040 | **não** — zero movimento |
 | 23 | `00002` | DEVOLUÇÃO DE VENDA E-COMMERCE | **sim** (subtrai) |
 | 27 | `00004` | DEVOLUÇÃO TROCA/CUPOM E-COMMERCE | **sim** (subtrai) |
 
-O `00129` cita uma segunda filial de e-commerce, a `00040`. Na semana validada o
-SITE (`00044`) fechou com uma peça de diferença, então a `00040` ou não vendeu ou
-é justamente a peça que falta.
+O `00129` cita uma segunda filial de e-commerce, a `00040`, mas não teve nenhum
+movimento em 2026. **A única filial de e-commerce ativa é a `00044`**,
+confirmado pelo negócio.
 
 ## Entrada de estoque na loja — o Estoque inicial (D13)
 
-O ciclo, pelos eventos que de fato rodam:
-
-| interno | código | descrição | movimentos | papel |
-|---:|---|---|---:|---|
-| 7 | — | RETORNO DE PRODUCAO | 501 | produção entra na Elena |
-| 108 | `00110` | FATURAMENTO ATACADO ELENATIMES ES | 575 | Elena fatura |
-| **105** | `00107` | **RECEBIMENTO DE COMPRA P.A (LOJAS)** | **922** | **a loja recebe** |
-| 104 | `00106` | RECEBIMENTO DE COMPRA ELENATIMES ES | 290 | recebimento na Elena |
-| 103 | `00105` | RECEBIMENTO DE COMPRA P.A | 54 | genérico |
-
-`105` é o maior evento de entrada do ano e o único cujo nome diz **(LOJAS)**.
-É o candidato a Estoque inicial.
-
-**Descartados por não terem movimento em 2026**, apesar dos nomes perfeitos:
-`208 CD-04 TRANSFERÊNCIA MATRIZ PARA LOJAS ( VENDA )`, `13 RECEBIMENTO DE
-TRANSFERENCIA MATRIZ`, `106 VENDAS ENTRE FILIAIS`, `203 VENDAS ENTRE FILIAIS
-( CONF )`, `209 EC-55`, `114 RETORNO P.A ELENATIMES (VAREJO)`.
+Ver **Os candidatos, agora**, acima. Resumo: `106 VENDAS ENTRE FILIAIS` (saída,
+1.186) com `105 RECEBIMENTO DE COMPRA P.A (LOJAS)` (entrada, 922) é o par mais
+coerente, e `4 TRANSFERÊNCIA DE ESTOQUE PA` (2.013) é o curinga — transferência
+direta, sem nota, e o quarto maior evento do ano.
 
 ## Atacado — fora do sellout
 
@@ -129,22 +143,22 @@ TRANSFERENCIA MATRIZ`, `106 VENDAS ENTRE FILIAIS`, `203 VENDAS ENTRE FILIAIS
 
 ## Ajuste manual — a entrada que não passa por transferência
 
-Estes mexem no saldo sem vir de compra, produção ou transferência. São o
-"outro caminho" que a D13 listava como a validar: o que entrar por aqui **não**
-aparece na transferência da Elena e continua invisível.
+Mexem no saldo sem vir de compra, produção ou nota. **E rodam muito:**
 
-| interno | código | descrição | lado |
-|---:|---|---|---|
-| 0 | `01` | ENTRADA SIMPLES DE ESTOQUE PRODUTO | + |
-| 2 | `03` | SAÍDA SIMPLES PA | − |
-| 4 | `05` | TRANSFERÊNCIA DE ESTOQUE PA | − |
-| 121 | `00130` | TRANSFERÊNCIA DE ESTOQUE IMPORTAÇÃO | − |
-| 103 | `00105` | RECEBIMENTO DE COMPRA P.A | + |
-| 119 | `00128` | ENTRADA DE DEVOLUÇÃO DE COMPRA P.A | + |
-| 38 | `00037` | ENTRADA IMPORTAÇÃO | + |
+| interno | código | descrição | lado | movimentos |
+|---:|---|---|---|---:|
+| 4 | `05` | TRANSFERÊNCIA DE ESTOQUE PA | − | **2.013** |
+| 0 | `01` | ENTRADA SIMPLES DE ESTOQUE PRODUTO | + | **312** |
+| 2 | `03` | SAÍDA SIMPLES PA | − | 98 |
+| 121 | `00130` | TRANSFERÊNCIA DE ESTOQUE IMPORTAÇÃO | − | 17 |
+| 38 | `00037` | ENTRADA IMPORTAÇÃO | + | 26 |
+| 110 | — | TRANSFERÊNCIA DE SALDOS EGREY | ? | 9 |
+| 206 | — | SAÍDA SIMPLES DIVERSOS | − | 3 |
 
-Vale medir quanto passa por aí numa semana. Se for zero, o Estoque inicial
-derivado fecha sozinho; se não for, precisa de lançamento à parte.
+Este é **o ponto em aberto mais pesado da D13**. Se parte dessas 2.013
+transferências de estoque for Elena → loja, ou loja → loja, o Estoque inicial
+não sai só da nota fiscal. Medir quanto disso toca IGUATEMI e EGREY JDS numa
+semana é o próximo teste, não uma curiosidade.
 
 ## Matéria-prima, produção, conserto e consignação — fora
 
