@@ -228,6 +228,10 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
     r = 6
     total_pl = total_erp = 0.0
     vistos = set()
+    # Quantos códigos em mais de uma linha o cadastro realmente resolveu. Sem
+    # esta contagem não dá para saber se o cadastro está trabalhando: ele não
+    # mexe no total, só em qual linha a peça pousa.
+    contagem = {"desempatados": 0, "sem_desempate": 0}
     for aba in ("Masculino", "Feminino"):
         if aba not in wb.sheetnames:
             continue
@@ -256,6 +260,11 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
             reparte = divide(codigo, por_codigo[codigo], saldo,
                              cadastro.get(codigo), colecoes_das_linhas)
             vistos.add(codigo)
+            marcas = " ".join(o for _q, o in reparte.values())
+            if "linha de outro bloco" in marcas:
+                contagem["desempatados"] += 1
+            elif "desempatar" in marcas or "nenhum dos blocos" in marcas:
+                contagem["sem_desempate"] += 1
             for linha, _cores in por_codigo[codigo]:
                 bloco, cores = meta[linha]
                 ei = wsv.cell(linha, coluna_ei).value
@@ -281,12 +290,22 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
 
     # o que o ERP transferiu e não apareceu em nenhuma linha das coleções
     de_produtos = colecao_dos_produtos(wb)
+
+    def colecao_de(codigo):
+        """Coleção do produto: a aba Produtos primeiro, o cadastro do ERP
+        depois. A aba só tem o que a origem exportou nesta semana; o cadastro
+        tem os 3.976. Produto transferido em março não está na aba, e sem o
+        cadastro cairia em 'fora das coleções pedidas' sendo da coleção."""
+        return de_produtos.get(codigo) or cadastro.get(codigo)
+
     fora = defaultdict(float)
     for (codigo, _cc, _dc), q in saldo.items():
         if codigo not in vistos and q > 0:
             fora[codigo] += q
-    pendentes = {c: q for c, q in fora.items() if de_produtos.get(c) in colecoes}
+    pendentes = {c: q for c, q in fora.items() if colecao_de(c) in colecoes}
     outros = {c: q for c, q in fora.items() if c not in pendentes}
+    contagem["pelo_cadastro"] = sum(
+        1 for c in pendentes if not de_produtos.get(c) and cadastro.get(c))
 
     if pendentes:
         r += 2
@@ -298,10 +317,10 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
         r += 2
         for codigo, q in sorted(pendentes.items(), key=lambda x: -x[1]):
             ws_out.cell(r, 3, codigo)
-            ws_out.cell(r, 5, de_produtos.get(codigo))
+            ws_out.cell(r, 5, colecao_de(codigo))
             ws_out.cell(r, 8, q)
-            ws_out.cell(r, 10, "sem linha ainda; a aba Produtos diz "
-                               + str(de_produtos.get(codigo)))
+            fonte = "a aba Produtos" if de_produtos.get(codigo) else "o cadastro do ERP"
+            ws_out.cell(r, 10, f"sem linha ainda; {fonte} diz {colecao_de(codigo)}")
             r += 1
 
     if outros:
@@ -310,9 +329,9 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
         r += 1
         for codigo, q in sorted(outros.items(), key=lambda x: -x[1]):
             ws_out.cell(r, 3, codigo)
-            ws_out.cell(r, 5, de_produtos.get(codigo) or "—")
+            ws_out.cell(r, 5, colecao_de(codigo) or "—")
             ws_out.cell(r, 8, q)
-            ws_out.cell(r, 10, "coleção " + (de_produtos.get(codigo) or "não encontrada"))
+            ws_out.cell(r, 10, "coleção " + (colecao_de(codigo) or "não encontrada nem na aba Produtos nem no cadastro"))
             r += 1
 
     r += 1
@@ -327,7 +346,7 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
     wb.save(saida)
     return {"linhas": r, "total_planilha": total_pl, "total_erp": total_erp,
             "pendentes": len(pendentes), "fora": len(outros),
-            "pecas_pendentes": sum(pendentes.values())}
+            "pecas_pendentes": sum(pendentes.values()), **contagem}
 
 
 def main(argv=None):
@@ -382,6 +401,14 @@ def main(argv=None):
     print(f"\n  {saida}")
     print(f"  planilha {r['total_planilha']:,.0f}  x  ERP {r['total_erp']:,.0f}  "
           f"(diferenca {r['total_erp'] - r['total_planilha']:+,.0f})")
+    if cadastro:
+        # O desempate NÃO mexe no total: ele move peça entre linhas do mesmo
+        # código, e a soma continua igual. O que ele conserta é linha a linha.
+        print(f"  cadastro desempatou {r['desempatados']} codigo(s) em dois "
+              f"blocos; {r['sem_desempate']} ficaram sem desempate")
+        if r.get("pelo_cadastro"):
+            print(f"  {r['pelo_cadastro']} produto(s) so foram reconhecidos como "
+                  "da colecao pelo cadastro do ERP (a aba Produtos nao os tem)")
     if r["pendentes"]:
         print(f"  {r['pendentes']} produto(s) da colecao, {r['pecas_pendentes']:,.0f} peca(s), "
               "ainda sem linha na planilha")
