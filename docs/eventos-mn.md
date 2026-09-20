@@ -14,6 +14,56 @@ completo use `eventos/ListaEventosPorTipo`.
 
 ---
 
+## Os 21 eventos com movimento em 2026
+
+Lido do banco em 20/09. **Metade do catálogo é cadastro antigo.** Um evento que
+existe e nunca é usado não é candidato a nada — e foi contra essa lista que a
+melhor hipótese do dia anterior morreu.
+
+| interno | descrição | movimentos |
+|---:|---|---:|
+| 30 | VENDA CUPOM FISCAL | 6.141 |
+| 25 | FATURAMENTO E-COMMERCE | 1.542 |
+| 12 | DEVOLUÇÃO DE VENDA VAREJO | 1.179 |
+| **105** | **RECEBIMENTO DE COMPRA P.A (LOJAS)** | **922** |
+| 108 | FATURAMENTO ATACADO ELENATIMES ES | 575 |
+| 7 | RETORNO DE PRODUCAO | 501 |
+| 104 | RECEBIMENTO DE COMPRA ELENATIMES ES | 290 |
+| 23 | DEVOLUÇÃO DE VENDA E-COMMERCE | 245 |
+| 56 | VENDA NFCE | 232 |
+| 10 | VENDA | 192 |
+| 202 | VENDA OUTLET | 173 |
+| 27 | DEVOLUÇÃO TROCA/CUPOM E-COMMERCE | 98 |
+| 103 | RECEBIMENTO DE COMPRA P.A | 54 |
+| 16 | RECEBIMENTO DE COMPRA M.P. | 36 |
+| 19 | ACERTO DE CONSIGNAÇÃO | 18 |
+| 9 | FATURAMENTO DE PEDIDO DE VENDA | 12 |
+| 34 | ENTRADA DE CONSIGNACAO | 7 |
+| 204 | VENDA CUPOM FISCAL - MÚLTIPLO VENDEDOR | 7 |
+| 28 | VENDA VAREJO LOJA | 6 |
+| 17 | DEVOLUÇÃO PARA FORNECEDOR P.A. | 1 |
+| 201 | FATURAMENTO DE BAZAR | 1 |
+
+### Três conclusões imediatas
+
+**O `208 CD-04 TRANSFERÊNCIA MATRIZ PARA LOJAS ( VENDA )` não tem movimento em
+2026.** Nem o `13`, nem o `106 VENDAS ENTRE FILIAIS`, nem o `203`. Eram a
+hipótese mais bonita do projeto — o nome dizia literalmente o que o negócio
+descrevia — e são cadastro morto. Nome bom não é uso.
+
+**O que entra peça na loja é o `105 RECEBIMENTO DE COMPRA P.A (LOJAS)`, com 922
+movimentos** — o maior evento de entrada do ano, e o primeiro palpite lá do
+começo. A Elena fatura (`108`, 575) e a loja recebe (`105`, 922); a produção
+entra na Elena pelo `7 RETORNO DE PRODUCAO` (501).
+
+**Nenhum evento de ajuste manual foi usado em 2026.** `ENTRADA SIMPLES DE
+ESTOQUE PRODUTO`, `SAÍDA SIMPLES PA` e `TRANSFERÊNCIA DE ESTOQUE PA` estão
+zerados. Isso fecha o item 2 da D13: não há entrada de loja por fora, então o
+Estoque inicial derivado pode fechar sozinho.
+
+E `FATURAMENTO E-COMMERCE 00040` também está zerado — **a única filial de
+e-commerce ativa é a `00044`**, confirmado pelo negócio.
+
 ## Venda de varejo
 
 | interno | código | descrição | no sellout |
@@ -48,32 +98,23 @@ SITE (`00044`) fechou com uma peça de diferença, então a `00040` ou não vend
 
 ## Entrada de estoque na loja — o Estoque inicial (D13)
 
-O par que mais se encaixa na descrição do negócio, "a Elena manda para as lojas
-por um evento de venda entre filiais":
+O ciclo, pelos eventos que de fato rodam:
 
-| interno | código | descrição | lado |
-|---:|---|---|---|
-| **208** | `CD-04` | **TRANSFERÊNCIA MATRIZ PARA LOJAS ( VENDA )** | saída |
-| **13** | `12` | **RECEBIMENTO DE TRANSFERENCIA MATRIZ** | entrada |
+| interno | código | descrição | movimentos | papel |
+|---:|---|---|---:|---|
+| 7 | — | RETORNO DE PRODUCAO | 501 | produção entra na Elena |
+| 108 | `00110` | FATURAMENTO ATACADO ELENATIMES ES | 575 | Elena fatura |
+| **105** | `00107` | **RECEBIMENTO DE COMPRA P.A (LOJAS)** | **922** | **a loja recebe** |
+| 104 | `00106` | RECEBIMENTO DE COMPRA ELENATIMES ES | 290 | recebimento na Elena |
+| 103 | `00105` | RECEBIMENTO DE COMPRA P.A | 54 | genérico |
 
-Saída da matriz, entrada na loja, e o `( VENDA )` no nome explica por que o
-negócio chama aquilo de venda entre filiais. "Matriz" aparece nos dois.
+`105` é o maior evento de entrada do ano e o único cujo nome diz **(LOJAS)**.
+É o candidato a Estoque inicial.
 
-Outros candidatos, a descartar pela chamada:
-
-| interno | código | descrição | lado |
-|---:|---|---|---|
-| 106 | `00108` | VENDAS ENTRE FILIAIS | saída |
-| 203 | `00205` | VENDAS ENTRE FILIAIS ( CONF ) | saída |
-| 105 | `00107` | RECEBIMENTO DE COMPRA P.A (LOJAS) | entrada |
-| 104 | `00106` | RECEBIMENTO DE COMPRA ELENATIMES ES | entrada |
-
-E o caminho de volta, loja → matriz, que **subtrai** do estoque da loja:
-
-| interno | código | descrição | lado |
-|---:|---|---|---|
-| 209 | `EC-55` | TRANSFERÊNCIA LOJA PARA MATRIZ (DEVOLUÇÃO) | saída |
-| 114 | `00120` | RETORNO P.A ELENATIMES (VAREJO) | saída |
+**Descartados por não terem movimento em 2026**, apesar dos nomes perfeitos:
+`208 CD-04 TRANSFERÊNCIA MATRIZ PARA LOJAS ( VENDA )`, `13 RECEBIMENTO DE
+TRANSFERENCIA MATRIZ`, `106 VENDAS ENTRE FILIAIS`, `203 VENDAS ENTRE FILIAIS
+( CONF )`, `209 EC-55`, `114 RETORNO P.A ELENATIMES (VAREJO)`.
 
 ## Atacado — fora do sellout
 

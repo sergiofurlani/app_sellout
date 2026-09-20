@@ -40,14 +40,35 @@ CATALOGO_ENTRADA = "/api/millenium/eventos/Eventos_InfluenciaEstoque"
 # silenciosa — ver conferir_eventos().
 #
 # interno=None significa "ainda não sabemos, resolver pelo catálogo".
+# Só entram eventos com movimento em 2026 (ver docs/eventos-mn.md). O catálogo
+# tem 57; a metade é cadastro antigo que nunca mais foi usado.
+#
+# Incluir evento de venda a mais é seguro **porque a comparação é por filial**:
+# um faturamento de atacado lançado na ELENA ES não aparece em IGUATEMI. O que
+# não é seguro é deixar de fora — some venda sem avisar.
 EVENTOS = [
-    {"rotulo": "venda",                 "interno": 10,   "codigo": "09",    "sinal": +1},
     {"rotulo": "venda cupom fiscal",    "interno": 30,   "codigo": "00027", "sinal": +1},
+    {"rotulo": "venda",                 "interno": 10,   "codigo": "09",    "sinal": +1},
+    {"rotulo": "venda nfce",            "interno": 56,   "codigo": "23",    "sinal": +1},
+    {"rotulo": "venda outlet",          "interno": 202,  "codigo": "00203", "sinal": +1},
     {"rotulo": "venda cupom multiplo",  "interno": 204,  "codigo": "00206", "sinal": +1},
+    {"rotulo": "faturamento pedido",    "interno": 9,    "codigo": "08",    "sinal": +1},
+    {"rotulo": "venda varejo loja",     "interno": 28,   "codigo": "00025", "sinal": +1},
+    {"rotulo": "faturamento bazar",     "interno": 201,  "codigo": "00201", "sinal": +1},
     {"rotulo": "devolucao varejo",      "interno": 12,   "codigo": "11",    "sinal": -1},
     {"rotulo": "venda e-commerce",      "interno": 25,   "codigo": "00003", "sinal": +1},
     {"rotulo": "devolucao e-commerce",  "interno": 23,   "codigo": "00002", "sinal": -1},
     {"rotulo": "troca/cupom e-commerce","interno": 27,   "codigo": "00004", "sinal": -1},
+]
+
+# Entrada de estoque na loja — candidatos com movimento em 2026 (D13).
+# 105 tem 922 movimentos no ano, de longe o maior evento de entrada.
+EVENTOS_ENTRADA = [
+    {"rotulo": "receb. compra P.A (lojas)", "interno": 105, "codigo": "00107", "sinal": +1},
+    {"rotulo": "receb. compra elenatimes",  "interno": 104, "codigo": "00106", "sinal": +1},
+    {"rotulo": "receb. compra P.A",         "interno": 103, "codigo": "00105", "sinal": +1},
+    {"rotulo": "retorno de producao",       "interno": 7,   "codigo": None,    "sinal": +1},
+    {"rotulo": "fat. atacado elenatimes",   "interno": 108, "codigo": "00110", "sinal": -1},
 ]
 
 EVENTOS_VENDA = (10, 30, 204)
