@@ -63,8 +63,15 @@ def sigla(colecao: str, subcolecao: str) -> str:
     return f"{est}{ano.group(1)}"
 
 
-def carrega(filtro_colecao: str | None = None) -> list[dict]:
+# Parâmetros obrigatórios que o `$metadata` não publica e o método exige. A
+# sonda descobre; o que ela achar entra aqui e para de precisar de --extras.
+OBRIGATORIOS: dict[str, str] = {}
+
+
+def carrega(filtro_colecao: str | None = None, extras: dict | None = None) -> list[dict]:
     params = {"$top": 20000}
+    params.update(OBRIGATORIOS)
+    params.update(extras or {})
     if filtro_colecao:
         params["COLECAO"] = filtro_colecao
     linhas = mn.valores(mn.requisita(LISTA, **params))
@@ -107,13 +114,24 @@ def main(argv=None):
     p.add_argument("--colecao", help="filtra por uma coleção do ERP")
     p.add_argument("--codigos", default="",
                    help="mostra so estes codigos, separados por virgula")
+    p.add_argument("--extras", default="",
+                   help="CAMPO=0,ORDEM=1 — o que a sonda_parametros descobrir")
     args = p.parse_args(argv)
 
+    extras = {}
+    for pedaco in args.extras.split(","):
+        if "=" in pedaco:
+            chave, _, valor = pedaco.partition("=")
+            extras[chave.strip()] = valor.strip()
+
     try:
-        produtos = carrega(args.colecao)
+        produtos = carrega(args.colecao, extras)
     except mn.Falha as e:
         print(f"\nFALHOU: {e}")
-        print("Se recusou por parametro, tente --colecao com um valor do ERP.")
+        print("Se recusou por parametro, rode a sonda e repasse o que ela achar:")
+        print("  python -m coletor.sonda_parametros produtosac/Lista "
+              "--parametro CAMPO --sem-datas")
+        print("  python -m coletor.produtos --extras CAMPO=0,ORDEM=1")
         return 1
 
     print(f"\n{len(produtos)} produto(s) no cadastro")
