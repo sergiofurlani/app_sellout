@@ -131,29 +131,28 @@ def sonda(candidatos, de: date, ate: date):
     exemplo = None
 
     for interno, desc in candidatos:
-        for d in mn.dias(de, ate):
-            try:
-                docs = mn.documentos_do_dia(d, eventos=(interno,))
-            except mn.Falha as e:
-                print(f"  evento {interno} em {d}: FALHOU ({e})")
-                break
-            for doc in docs:
-                if exemplo is None:
-                    exemplo = doc
-                filial = str(campo(doc, "cod_filial") or "?").strip()
-                a = ag[(interno, desc, filial)]
-                a["docs"] += 1
-                destino = campo(doc, "filial_destino", "cod_filial_destino",
-                                "desc_filial_destino")
-                if destino:
-                    a["destinos"].add(str(destino).strip())
-                for item in doc.get("itens") or []:
-                    q = item.get("quant") or 0
-                    if q <= 0:
-                        continue
-                    a["itens"] += 1
-                    a["qtde"] += q
-                    a["produtos"].add(str(item.get("cod_produto") or "").strip())
+        try:
+            docs = mn.documentos_do_periodo(de, ate, (interno,))
+        except mn.Falha as e:
+            print(f"  evento {interno}: FALHOU ({e})")
+            continue
+        for doc in docs:
+            if exemplo is None:
+                exemplo = doc
+            filial = str(campo(doc, "cod_filial") or "?").strip()
+            a = ag[(interno, desc, filial)]
+            a["docs"] += 1
+            destino = campo(doc, "filial_destino", "cod_filial_destino",
+                            "desc_filial_destino")
+            if destino:
+                a["destinos"].add(str(destino).strip())
+            for item in doc.get("itens") or []:
+                q = item.get("quant") or 0
+                if q <= 0:
+                    continue
+                a["itens"] += 1
+                a["qtde"] += q
+                a["produtos"].add(str(item.get("cod_produto") or "").strip())
 
     if not ag:
         print("  Nenhum documento em nenhum candidato.")

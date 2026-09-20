@@ -72,33 +72,34 @@ def classifica(origem: str, destino: str) -> str:
 def coleta(de: date, ate: date):
     """Movimentos do evento 106, um registro por item, já classificados."""
     registros = []
-    for d in mn.dias(de, ate):
-        for doc in mn.documentos_do_dia(d, eventos=(EVENTO,)):
-            origem = str(doc.get("cod_filial") or "").strip()
-            destino = str(doc.get("cod_cliente") or "").strip()
-            tipo = classifica(origem, destino)
-            data = mn.parse_data(doc.get("data_emissao"))
-            nota = ""
-            if doc.get("nfs"):
-                nota = str(doc["nfs"][0].get("numero_nota") or "")
-            for item in doc.get("itens") or []:
-                q = item.get("quant") or 0
-                if q <= 0:
-                    continue
-                registros.append({
-                    "data": data,
-                    "tipo": tipo,
-                    "origem": origem,
-                    "destino": destino,
-                    "codigo": str(item.get("cod_produto") or "").strip(),
-                    "cod_cor": str(item.get("cod_cor") or "").strip(),
-                    "cor": str(item.get("desc_cor") or "").strip(),
-                    "tamanho": str(item.get("tamanho") or "").strip(),
-                    "quant": q,
-                    "valor": float(item.get("total") or 0),
-                    "nota": nota,
-                    "romaneio": doc.get("romaneio"),
-                })
+    # Fatia mensal: e o mesmo cache que a conferencia enche, entao rodar os
+    # dois sobre o mesmo periodo custa uma extracao, nao duas.
+    for doc in mn.documentos_do_periodo(de, ate, (EVENTO,)):
+        origem = str(doc.get("cod_filial") or "").strip()
+        destino = str(doc.get("cod_cliente") or "").strip()
+        tipo = classifica(origem, destino)
+        data = mn.parse_data(doc.get("data_emissao"))
+        nota = ""
+        if doc.get("nfs"):
+            nota = str(doc["nfs"][0].get("numero_nota") or "")
+        for item in doc.get("itens") or []:
+            q = item.get("quant") or 0
+            if q <= 0:
+                continue
+            registros.append({
+                "data": data,
+                "tipo": tipo,
+                "origem": origem,
+                "destino": destino,
+                "codigo": str(item.get("cod_produto") or "").strip(),
+                "cod_cor": str(item.get("cod_cor") or "").strip(),
+                "cor": str(item.get("desc_cor") or "").strip(),
+                "tamanho": str(item.get("tamanho") or "").strip(),
+                "quant": q,
+                "valor": float(item.get("total") or 0),
+                "nota": nota,
+                "romaneio": doc.get("romaneio"),
+            })
     return registros
 
 
