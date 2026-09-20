@@ -48,6 +48,7 @@ Ao final sai também um **relatório de conferência** com o que foi feito e o q
 | [docs/roteiro.md](docs/roteiro.md) | as etapas da migração para banco e os pontos em aberto |
 | [docs/operacao.md](docs/operacao.md) | rodada semanal, o que conferir e como voltar atrás |
 | [docs/api-millennium.md](docs/api-millennium.md) | acesso ao ERP, armadilhas verificadas e o que falta descobrir |
+| [docs/eventos-mn.md](docs/eventos-mn.md) | os 57 eventos de estoque do ERP e quais entram no sellout |
 
 A tag `v1.0` marca o processo por planilha funcionando e conferido — é o ponto
 de retorno caso a migração para banco não dê certo.
