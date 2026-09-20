@@ -178,20 +178,66 @@ def sonda(candidatos, de: date, ate: date):
             print(f'    {k:22} {str(v)[:44]}')
 
 
-def por_evento(candidatos, de: date, ate: date):
+def chama_por_evento(valor, de: date, ate: date):
+    """Uma chamada ao Lista_Por_Evento. Devolve (linhas, erro)."""
+    try:
+        return mn.valores(mn.requisita(
+            LISTA_POR_EVENTO,
+            **{"$top": 2000, "EVENTO": valor,
+               "DATAI": de.isoformat(), "DATAF": ate.isoformat()})), None
+    except mn.Falha as e:
+        return [], str(e)[:110]
+
+
+def controle(de: date, ate: date, codigos) -> bool:
+    """O 106 move milhares de peças no ano. Se ele também vier vazio aqui, o
+    vazio não é do evento: é do método ou do parâmetro.
+
+    Sem esse controle, "vazio" foi lido como "esse evento não existe por aqui"
+    — que é exatamente a conclusão errada a tirar de uma chamada que talvez
+    nem esteja sendo entendida pelo servidor.
+    """
+    print("\n  Controle: evento 106 (VENDAS ENTRE FILIAIS), que tem movimento certo")
+    achou = False
+    for rotulo, valor in (("interno", 106), ("codigo", codigos.get(106, "00108"))):
+        linhas, erro = chama_por_evento(valor, de, ate)
+        estado = erro if erro else (f"{len(linhas)} documento(s)" if linhas else "vazio")
+        print(f"    EVENTO={valor!r} ({rotulo}): {estado}")
+        achou = achou or bool(linhas)
+    if not achou:
+        print("    O controle tambem veio vazio. O Lista_Por_Evento nao esta")
+        print("    respondendo ao EVENTO como mandamos — o vazio do 105 nao")
+        print("    prova nada sobre o 105.")
+    else:
+        print("    O metodo responde. Vazio em outro evento e vazio de verdade.")
+    return achou
+
+
+def por_evento(candidatos, de: date, ate: date, codigos=None):
     """Plano B: Lista_Por_Evento traz FILIAL_DESTINO no documento."""
     titulo("3. Lista_Por_Evento — documento com filial de destino")
+    codigos = codigos or {}
+    controle(de, ate, codigos)
     for interno, desc in candidatos[:6]:
-        try:
-            linhas = mn.valores(mn.requisita(
-                LISTA_POR_EVENTO,
-                **{"$top": 2000, "EVENTO": interno,
-                   "DATAI": de.isoformat(), "DATAF": ate.isoformat()}))
-        except mn.Falha as e:
-            print(f"  evento {interno:>4} ({desc[:30]}): {str(e)[:110]}")
+        # Os dois códigos do mesmo evento (o interno e o do ERP) colidem entre
+        # eventos diferentes, e nada diz qual deles este método quer. Tenta os
+        # dois antes de declarar vazio.
+        tentativas = [interno]
+        cod = codigos.get(interno)
+        if cod and str(cod) != str(interno):
+            tentativas.append(cod)
+        linhas, erro = [], None
+        for valor in tentativas:
+            linhas, erro = chama_por_evento(valor, de, ate)
+            if linhas:
+                print(f"  evento {interno:>4} ({desc[:30]}): respondeu com EVENTO={valor!r}")
+                break
+        if erro and not linhas:
+            print(f"  evento {interno:>4} ({desc[:30]}): {erro}")
             continue
         if not linhas:
-            print(f"  evento {interno:>4} ({desc[:30]}): vazio")
+            print(f"  evento {interno:>4} ({desc[:30]}): vazio nos dois codigos "
+                  f"({', '.join(repr(t) for t in tentativas)})")
             continue
         print(f"\n  evento {interno} — {desc}: {len(linhas)} documento(s)")
         fluxo = defaultdict(lambda: {"docs": 0, "valor": 0.0})
@@ -203,6 +249,18 @@ def por_evento(candidatos, de: date, ate: date):
             f["valor"] += float(campo(l, "valor_final") or 0)
         for (o, d), f in sorted(fluxo.items(), key=lambda x: -x[1]["valor"]):
             print(f'    {o:14} -> {d:14} {f["docs"]:>5} doc  R$ {f["valor"]:>12,.2f}')
+
+        # O fluxo por filial diz de onde para onde. O que decide se este
+        # método serve para o Estoque inicial é outra coisa: se o documento
+        # traz item com produto e cor. Sem isso não dá para somar peça.
+        com_item = next((l for l in linhas if l.get("itens")), None)
+        if not com_item:
+            print("    documentos SEM itens — nao serve para somar peca por produto")
+            continue
+        item = com_item["itens"][0]
+        print(f'    itens: sim ({len(com_item["itens"])} no primeiro doc). Campos:')
+        for k, v in list(item.items())[:14]:
+            print(f'      {k:20} {str(v)[:40]}')
 
 
 def main(argv=None):
@@ -225,8 +283,9 @@ def main(argv=None):
     candidatos = escolhe(linhas, args.eventos)
     print(f"\nCandidatos: {', '.join(str(c[0]) for c in candidatos) or '(nenhum)'}")
 
+    codigos = {campo(e, "evento"): str(campo(e, "codigo") or "") for e in linhas}
     sonda(candidatos, args.de, args.ate)
-    por_evento(candidatos, args.de, args.ate)
+    por_evento(candidatos, args.de, args.ate, codigos)
 
     r = REFERENCIA_PRODUCAO
     titulo("O que fazer com isso")

@@ -96,19 +96,53 @@ def _nome_limpo(desc_cor: str) -> str:
     return (nome or desc_cor or "").strip()
 
 
-def le_cadastro(caminho) -> dict[str, str]:
-    """codigo -> sigla da coleção, do CSV do cadastro do ERP."""
+def le_cadastro(caminho) -> tuple[dict[str, str], set[str], dict[str, tuple[str, str]]]:
+    """Do CSV do cadastro: (codigo -> sigla, códigos PERENE, codigo -> (coleção, subcoleção)).
+
+    O terceiro existe porque o primeiro mente por omissão: só o produto com
+    sigla entrava no mapa, então perene e produto sem subcoleção ficavam de
+    fora e a conferência dizia "não encontrado no cadastro" — sendo que o
+    cadastro tem os 3.976. Não encontrar e não ter sigla são coisas
+    diferentes, e confundir as duas esconde justamente o cadastro incompleto.
+
+    PERENE é Clássico, e produto perene não pertence a nenhuma outra coleção.
+    Então perene transferido para a loja não é sobra inexplicada: é da outra
+    planilha.
+    """
     import csv as _csv
     if not caminho:
-        return {}
-    mapa = {}
+        return {}, set(), {}
+    mapa, perenes, bruto = {}, set(), {}
     with open(caminho, newline="", encoding="utf-8-sig") as f:
         for linha in _csv.DictReader(f, delimiter=";"):
             cod = (linha.get("codigo") or "").strip()
+            if not cod:
+                continue
+            col = (linha.get("colecao") or "").strip().upper()
+            sub = (linha.get("subcolecao") or "").strip()
+            bruto[cod] = (col, sub)
             sg = (linha.get("sigla") or "").strip().upper()
-            if cod and sg:
+            if sg:
                 mapa[cod] = sg
-    return mapa
+            if col == "PERENE":
+                perenes.add(cod)
+    return mapa, perenes, bruto
+
+
+def diagnostico(codigo, bruto, siglas, de_produtos) -> str:
+    """Por que este código não pousou em bloco nenhum. Uma frase por causa."""
+    if codigo in siglas:
+        return f"coleção {siglas[codigo]}"
+    if codigo not in bruto:
+        return "não está no cadastro do ERP"
+    col, sub = bruto[codigo]
+    if col == "PERENE":
+        return "coleção PERENE — é Clássicos, está na outra planilha"
+    if not col:
+        return "está no cadastro, sem coleção preenchida"
+    if not sub:
+        return f"cadastro diz {col} sem subcoleção — sem ano não há sigla"
+    return f"cadastro diz {col} / {sub}, que não vira sigla"
 
 
 def divide(codigo, linhas_do_codigo, saldo, colecao_erp=None, colecoes_das_linhas=None):
@@ -122,12 +156,12 @@ def divide(codigo, linhas_do_codigo, saldo, colecao_erp=None, colecoes_das_linha
     if len(linhas_do_codigo) == 1:
         return {linhas_do_codigo[0][0]: (total, "")}
 
-    # Código em mais de uma linha SEM vermelho em nenhuma: é o mesmo produto
-    # em dois blocos de coleção (o `330043 CALÇA MB NEW` está em AW26 e SS27).
-    # O ERP tem um único fluxo de transferências para esse código e não sabe a
-    # qual coleção cada peça pertence — a coleção é recorte nosso, não dele.
-    # Dividir seria inventar; atribuir tudo à última linha, que é o que a regra
-    # do "resto" fazia, faz a outra aparecer zerada como se faltasse peça.
+    # Código em mais de uma linha SEM vermelho em nenhuma: o mesmo produto em
+    # dois blocos de coleção (o `330043` está em AW26 e SS27). O ERP tem um
+    # único fluxo de transferências por código e não reparte peça entre linhas
+    # — repartir seria invenção nossa. Atribuir tudo à última linha, que é o
+    # que a regra do "resto" fazia, faz a outra aparecer zerada como se
+    # faltasse peça. O cadastro desempata quando alcança (D11).
     sem_vermelho = [l for l, c in linhas_do_codigo if not c or eh_resto(c)]
     if len(sem_vermelho) > 1:
         # O cadastro do ERP diz a coleção do produto. Com ela, a linha do bloco
@@ -146,8 +180,10 @@ def divide(codigo, linhas_do_codigo, saldo, colecao_erp=None, colecoes_das_linha
                     for l, _c in linhas_do_codigo}
         if colecao_erp:
             # O cadastro respondeu, mas com uma coleção que não é nenhum dos
-            # blocos — o `328028 CAMISA CLÁSSICA` é SS24 e aparece em AW26 e
-            # SS27. Produto que voltou a ser feito mantém o cadastro antigo.
+            # blocos: o `328028` é SS24 no cadastro e está em AW26 e SS27 na
+            # planilha. Quem diverge é a planilha, não o cadastro — e por que
+            # ela o colocou nesses blocos é pergunta para ela. A conferência
+            # relata e não escolhe.
             obs = (f"cadastro do ERP diz {colecao_erp}, que nao e nenhum dos "
                    f"blocos desta planilha — total do codigo: {total:,.0f}")
         else:
@@ -205,8 +241,10 @@ def colecao_dos_produtos(wb) -> dict[str, str]:
 
 
 def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: date,
-          cadastro=None):
+          cadastro=None, perenes=None, bruto=None):
     cadastro = cadastro or {}
+    perenes = perenes or set()
+    bruto = bruto or {}
     wb = openpyxl.load_workbook(caminho, data_only=False, rich_text=True)
     wv = openpyxl.load_workbook(caminho, data_only=True)
     if ABA in wb.sheetnames:
@@ -232,6 +270,23 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
     # esta contagem não dá para saber se o cadastro está trabalhando: ele não
     # mexe no total, só em qual linha a peça pousa.
     contagem = {"desempatados": 0, "sem_desempate": 0}
+    # Onde cada código aparece na planilha inteira, inclusive nos blocos que
+    # não são coleção — HOME, GLORIA KALIL, PIMA, CASHMERE, COURO são linha
+    # comercial (D11). Produto que o cadastro diz ser AW26 pode estar lá, com
+    # linha e tudo; sem esta varredura ele seria contado como "sem linha" e
+    # viraria falta que não existe.
+    alhures: dict[str, str] = {}
+    for aba in ("Masculino", "Feminino"):
+        if aba not in wb.sheetnames:
+            continue
+        ws = wb[aba]
+        for bloco in blocos_de(ws):
+            if bloco.get("colecao") in colecoes:
+                continue
+            for _linha, codigo, b in linhas_de_produto(ws, [bloco]):
+                if codigo:
+                    alhures.setdefault(codigo, b.get("titulo") or b.get("colecao") or aba)
+
     for aba in ("Masculino", "Feminino"):
         if aba not in wb.sheetnames:
             continue
@@ -302,10 +357,18 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
     for (codigo, _cc, _dc), q in saldo.items():
         if codigo not in vistos and q > 0:
             fora[codigo] += q
-    pendentes = {c: q for c, q in fora.items() if colecao_de(c) in colecoes}
-    outros = {c: q for c, q in fora.items() if c not in pendentes}
+    da_colecao = {c: q for c, q in fora.items() if colecao_de(c) in colecoes}
+    # Quem já tem linha em outro bloco não é produto sem linha: é produto cuja
+    # linha está na linha comercial. Contá-lo como pendente inventaria peça
+    # faltando e, pior, a rodada poderia inserir uma segunda linha do mesmo
+    # código.
+    noutro = {c: q for c, q in da_colecao.items() if c in alhures}
+    pendentes = {c: q for c, q in da_colecao.items() if c not in alhures}
+    outros = {c: q for c, q in fora.items() if c not in da_colecao}
     contagem["pelo_cadastro"] = sum(
-        1 for c in pendentes if not de_produtos.get(c) and cadastro.get(c))
+        1 for c in da_colecao if not de_produtos.get(c) and cadastro.get(c))
+    contagem["noutro_bloco"] = len(noutro)
+    contagem["pecas_noutro_bloco"] = sum(noutro.values())
 
     if pendentes:
         r += 2
@@ -323,15 +386,47 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
             ws_out.cell(r, 10, f"sem linha ainda; {fonte} diz {colecao_de(codigo)}")
             r += 1
 
+    if noutro:
+        r += 2
+        ws_out.cell(r, 1, "Da coleção, mas a linha está em outro bloco").font = Font(bold=True)
+        ws_out.cell(r + 1, 1, "Linha comercial (HOME, GLORIA KALIL, PIMA, CASHMERE, "
+                              "COURO) é recorte nosso, não do ERP. Tem linha — não "
+                              "inserir de novo.")
+        r += 2
+        for codigo, q in sorted(noutro.items(), key=lambda x: -x[1]):
+            ws_out.cell(r, 3, codigo)
+            ws_out.cell(r, 5, colecao_de(codigo))
+            ws_out.cell(r, 8, q)
+            ws_out.cell(r, 10, f"linha existe no bloco {alhures[codigo]}")
+            r += 1
+
+    classicos = {c: q for c, q in outros.items() if c in perenes}
+    contagem["classicos"] = len(classicos)
+    contagem["pecas_classicos"] = sum(classicos.values())
+    # Por que cada um que sobrou não pousou. "Não está no cadastro" agora
+    # significa isso mesmo, e não "não tem sigla".
+    causas = defaultdict(lambda: [0, 0.0])
+    for c, q in outros.items():
+        if c in perenes:
+            continue
+        chave = diagnostico(c, bruto, cadastro, de_produtos)
+        causas[chave][0] += 1
+        causas[chave][1] += q
+    contagem["causas"] = {k: tuple(v) for k, v in causas.items()}
+
     if outros:
         r += 2
         ws_out.cell(r, 1, "Transferidos, fora das coleções pedidas").font = Font(bold=True)
         r += 1
         for codigo, q in sorted(outros.items(), key=lambda x: -x[1]):
             ws_out.cell(r, 3, codigo)
-            ws_out.cell(r, 5, colecao_de(codigo) or "—")
+            ws_out.cell(r, 5, "PERENE" if codigo in perenes
+                        else (colecao_de(codigo) or (bruto.get(codigo) or ("—",))[0] or "—"))
             ws_out.cell(r, 8, q)
-            ws_out.cell(r, 10, "coleção " + (colecao_de(codigo) or "não encontrada nem na aba Produtos nem no cadastro"))
+            obs = (f"coleção {de_produtos[codigo]} (aba Produtos)"
+                   if de_produtos.get(codigo)
+                   else diagnostico(codigo, bruto, cadastro, de_produtos))
+            ws_out.cell(r, 10, obs)
             r += 1
 
     r += 1
@@ -346,7 +441,8 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
     wb.save(saida)
     return {"linhas": r, "total_planilha": total_pl, "total_erp": total_erp,
             "pendentes": len(pendentes), "fora": len(outros),
-            "pecas_pendentes": sum(pendentes.values()), **contagem}
+            "pecas_pendentes": sum(pendentes.values()),
+            "pecas_fora": sum(outros.values()), **contagem}
 
 
 def main(argv=None):
@@ -393,11 +489,12 @@ def main(argv=None):
     print(f"  {docs} documento(s), {len(saldo)} combinacao(oes) produto+cor, "
           f"{pecas:,.0f} peca(s)")
 
-    cadastro = le_cadastro(args.cadastro)
+    cadastro, perenes, bruto = le_cadastro(args.cadastro)
     if cadastro:
-        print(f"  cadastro do ERP: {len(cadastro)} produto(s) com colecao")
+        print(f"  cadastro do ERP: {len(cadastro)} produto(s) com colecao, "
+              f"{len(perenes)} perene(s)")
     r = monta(str(caminho), saida, saldo, primeira, colecoes, args.de, args.ate,
-              cadastro)
+              cadastro, perenes, bruto)
     print(f"\n  {saida}")
     print(f"  planilha {r['total_planilha']:,.0f}  x  ERP {r['total_erp']:,.0f}  "
           f"(diferenca {r['total_erp'] - r['total_planilha']:+,.0f})")
@@ -412,8 +509,18 @@ def main(argv=None):
     if r["pendentes"]:
         print(f"  {r['pendentes']} produto(s) da colecao, {r['pecas_pendentes']:,.0f} peca(s), "
               "ainda sem linha na planilha")
+    if r.get("noutro_bloco"):
+        print(f"  {r['noutro_bloco']} produto(s) da colecao com linha em OUTRO bloco "
+              f"(linha comercial), {r['pecas_noutro_bloco']:,.0f} peca(s) — tem linha, "
+              "nao sao falta")
     if r["fora"]:
-        print(f"  {r['fora']} produto(s) transferidos fora das colecoes pedidas")
+        print(f"  {r['fora']} produto(s) transferidos fora das colecoes pedidas, "
+              f"{r['pecas_fora']:,.0f} peca(s)")
+        if r.get("classicos"):
+            print(f"    destes, {r['classicos']} sao PERENE = Classicos, "
+                  f"{r['pecas_classicos']:,.0f} peca(s) — outra planilha")
+        for causa, (n, q) in sorted(r.get("causas", {}).items(), key=lambda x: -x[1][1]):
+            print(f"    {n:>3} produto(s), {q:>7,.0f} peca(s)  {causa}")
     print("\n  A aba nova fica ao final do arquivo. As abas de trabalho e as 237")
     print("  colunas de historico nao foram tocadas.")
     return 0

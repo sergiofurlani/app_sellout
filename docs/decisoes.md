@@ -139,14 +139,24 @@ AW26 e SS27 — deixa de ser ambiguidade. O cadastro diz `AW26`, a linha daquele
 bloco fica com a transferência e a outra é marcada como sobra de bloco antigo,
 em vez de aparecer zerada como se faltasse peça.
 
-**Onde o cadastro não resolve:** o `328028 CAMISA CLÁSSICA` está nos mesmos dois
-blocos e o cadastro diz `SS24`. Não é erro — produto que volta a ser feito
-mantém a coleção de origem. Aí o desempate não existe, e a conferência diz
-exatamente isso na coluna Obs em vez de escolher uma linha por sorteio.
+**Onde o cadastro não resolve:** o `328028` está nos mesmos dois blocos e o
+cadastro diz `SS24` — nenhum dos dois. Aí não há desempate, e a conferência diz
+isso na coluna Obs em vez de escolher uma linha por sorteio. Quem diverge é a
+planilha; o cadastro respondeu.
+
+**Categorização é o cadastro; descrição é descrição.** O nome do produto não
+categoriza nada. `CAMISA CLÁSSICA` no nome não põe o produto na linha
+Clássicos, e esse produto não está em Clássicos. Deduzir categoria pelo nome já
+deu errado aqui antes — foi assim que "sapato e tricô entram por compra" virou
+conclusão a partir de seis nomes de produto, e estava errado.
+
 Confirmado no cadastro: 3.976 produtos, e a coleção só vira sigla quando é
 estação com ano. `ATEMPORAL`, `PERENE` e `INDEFINIDO` não são estação e nunca
-vão virar `SS27` — estão listadas em `SEM_ESTACAO` para não parecerem mapa
-faltando.
+vão virar `SS27` — estão em `SEM_ESTACAO` para não parecerem mapa faltando.
+
+**Os Clássicos são a coleção `PERENE`, e só ela.** Não `ATEMPORAL`, que é
+outra coisa. É a regra que define o universo da *Sellout Clássicos*: em vez de
+lista mantida à mão, o cadastro responde quem entra. São 28 produtos hoje.
 
 ## D12 · O e-commerce não tem estoque próprio
 
@@ -478,11 +488,36 @@ produzido. É exatamente o erro que a D14 corrige na origem.
 **E dois casos que eram defeito meu:** `328028` e `330043` aparecem em AW26
 **e** SS27, sem vermelho em nenhuma das linhas. A regra do "resto" jogava todo o
 saldo na última linha e deixava a outra zerada — 107 peças de falso buraco. O
-ERP tem um único fluxo por código e **não sabe a qual coleção cada peça
-pertence**: coleção é recorte nosso, não dele. Agora o total vai numa linha só,
-com a observação dizendo por quê, em vez de a outra parecer faltando.
+ERP tem um único fluxo por código e não reparte peça entre linhas — repartir
+seria invenção nossa. Com o cadastro (D11), o `330043` passou a ter desempate:
+é AW26, a linha daquele bloco fica com tudo. O `328028` continua sem, porque o
+cadastro diz SS24 e nenhuma das duas linhas é SS24. Nos dois casos o total vai
+numa linha só, com a observação dizendo por quê.
 
 Descontando essas 107, a diferença real é de **54 peças em 10.726 — 0,5%**.
+
+### O que parecia faltar e não faltava (20/09, período cheio de 2026)
+
+Com o cadastro classificando, a conferência de 01/01 a 20/09 acusou 66 produtos
+"da coleção, sem linha na planilha", 3.302 peças, e 49 "fora das coleções",
+3.108 peças. Conferido código a código contra a planilha inteira:
+
+| | produtos | peças | o que é |
+|---|---:|---:|---|
+| tem linha, em bloco de linha comercial | 37 | 2.110 | HOME, GLORIA KALIL, PIMA, CASHMERE, COURO |
+| sem linha em lugar nenhum | 29 | 1.192 | 1.113 são SS27, coleção entrando agora |
+| PERENE = Clássicos | 24 | 2.748 | outra planilha |
+| coleção sem subcoleção no cadastro | 21 | 273 | 18 VERÃO, 3 INVERNO — sem ano, sem sigla |
+| sem coleção nenhuma no cadastro | 2 | 85 | |
+
+Das 1.832 peças de AW26 que apareceram como pendentes, **1.753 já tinham
+linha** — estavam na linha comercial. Sobram 79. O pendente real de AW26 é
+ruído; o de SS27 é a coleção chegando.
+
+**O que isso deixa em aberto:** 18 produtos de VERÃO sem subcoleção no
+cadastro, 270 peças. Sem o ano não há sigla, e sem sigla eles não pousam em
+bloco nenhum. Se algum for SS27, é preenchimento que falta no ERP — e é
+invisível hoje.
 
 ### Nem tudo entra pela Elena: o sapato vem por compra direta
 
@@ -494,6 +529,16 @@ porque o erro foi de método:
 - **Sapato não passa pela Elena.** Entra direto na loja pelo
   `105 RECEBIMENTO DE COMPRA P.A (LOJAS)` — 922 movimentos em 2026, o maior
   evento de entrada do ano.
+
+**Quem é sapato o cadastro diz: `grupo = SAPATOS`.** São 62 no cadastro, 19
+deles SS27 ou AW26. Desses 19, **13 não aparecem no fluxo do 106** — é o
+tamanho do buraco do evento 105, medido em vez de estimado. Os 6 que aparecem
+(173 peças) mostram que o caminho não é exclusivo: parte do sapato passa pela
+Elena. Então a regra é **somar 105 e 106**, não escolher um.
+
+Dois dos 13 estão cadastrados como `239067ERR` e `239068ERR` — sufixo `ERR` no
+código. Sujeira de cadastro, e quem confia no código para casar planilha e ERP
+não acha esses.
 
 Então o Estoque inicial não é só o `106`. É `106` (Elena → lojas) mais `105`
 (compra direta) mais os ajustes `0` e `2`.

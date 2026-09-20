@@ -42,11 +42,17 @@ ESTACAO = {
     "ALTO INVERNO": "AW", "ALTO VERAO": "SS", "ALTO VERÃO": "SS",
 }
 
-# Coleções que não são estação: não ganham sigla e não deveriam ganhar. O
-# produto atemporal volta a ser feito todo ano mantendo o cadastro antigo —
-# é por isso que o `328028 CAMISA CLÁSSICA` é SS24 e mesmo assim aparece nos
-# blocos de 2026 e 2027 da planilha.
+# Coleções que não são estação: não ganham sigla e não deveriam ganhar.
+#
+# Categorização é o que está no cadastro — coleção, subcoleção, tipo, grupo.
+# A descrição do produto não categoriza nada: "CAMISA CLÁSSICA" no nome não
+# faz o produto ser da linha Clássicos, e ler o nome para deduzir categoria
+# é como errar duas vezes e acertar por acaso na terceira.
 SEM_ESTACAO = {"ATEMPORAL", "PERENE", "INDEF - INDEFINIDO", "INDEFINIDO", "INDEF"}
+
+# A planilha Sellout Clássicos é a coleção PERENE do cadastro — só ela.
+# ATEMPORAL também não é estação, e também não é Clássicos.
+COLECAO_CLASSICOS = "PERENE"
 
 CAMPOS = ["codigo", "interno", "colecao", "subcolecao", "sigla", "referencia", "descricao",
           "tipo", "grupo", "departamento", "marca", "divisao", "categoria",
@@ -151,6 +157,9 @@ def main(argv=None):
     p.add_argument("--extras", default="",
                    help="acrescenta ou troca parametro do metodo, ex.: CAMPO=1")
     p.add_argument("--limite", type=int, default=20000, help="teto de $top")
+    p.add_argument("--classicos", action="store_true",
+                   help=f"lista a colecao {COLECAO_CLASSICOS} — o universo da "
+                        "planilha Sellout Classicos")
     args = p.parse_args(argv)
 
     extras = {}
@@ -193,6 +202,15 @@ def main(argv=None):
             print("\n  Acrescente em ESTACAO (coletor/produtos.py) as que "
                   "entram no sellout:")
             print("    " + ", ".join(desconhecidas[:15]))
+
+    if args.classicos:
+        perenes = [p for p in produtos
+                   if (p["colecao"] or "").upper() == COLECAO_CLASSICOS]
+        print(f"\nSellout Clássicos = coleção {COLECAO_CLASSICOS}: "
+              f"{len(perenes)} produto(s)")
+        for p in sorted(perenes, key=lambda x: x["codigo"]):
+            print(f'  {p["codigo"]:9} {p["tipo"][:16]:16} {p["grupo"][:16]:16} '
+                  f'{p["descricao"][:36]}')
 
     if args.codigos:
         print("\ncódigos pedidos:")
