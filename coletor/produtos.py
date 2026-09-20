@@ -41,7 +41,7 @@ ESTACAO = {
     "INVERNO": "AW", "AW": "AW", "OUTONO": "AW",
 }
 
-CAMPOS = ["codigo", "colecao", "subcolecao", "sigla", "referencia", "descricao",
+CAMPOS = ["codigo", "interno", "colecao", "subcolecao", "sigla", "referencia", "descricao",
           "tipo", "grupo", "departamento", "marca", "divisao", "categoria",
           "status", "grade", "fornecedor", "cadastro"]
 
@@ -63,13 +63,26 @@ def sigla(colecao: str, subcolecao: str) -> str:
     return f"{est}{ano.group(1)}"
 
 
-# Parâmetros obrigatórios que o `$metadata` não publica e o método exige. A
-# sonda descobre; o que ela achar entra aqui e para de precisar de --extras.
-OBRIGATORIOS: dict[str, str] = {}
+# Parâmetros obrigatórios que o `$metadata` não publica e o método exige.
+# Descobertos pela sonda: `CAMPO=0, ORDEM=0`. `ORDEM` é booleano do lado do
+# MN — mandar texto devolve "Could not convert variant of type (String) into
+# type (Boolean)", que parece erro de parâmetro e não é.
+OBRIGATORIOS = {"CAMPO": "0", "ORDEM": "0"}
+
+# O MN prefixa quase toda descrição de cadastro com o código: "0002 - VERÃO",
+# "0000000021 - 2011", "01 - BONDUKI...". O prefixo é numérico; o código de
+# produto antigo é alfanumérico ("EYV013 - VESTIDO"), então descrição de
+# produto não passa por aqui.
+RE_PREFIXO = re.compile(r"^\s*\d+\s*-\s*")
 
 
-def carrega(filtro_colecao: str | None = None, extras: dict | None = None) -> list[dict]:
-    params = {"$top": 20000}
+def limpa(valor) -> str:
+    return RE_PREFIXO.sub("", str(valor or "").strip())
+
+
+def carrega(filtro_colecao: str | None = None, extras: dict | None = None,
+            teto: int = 20000) -> list[dict]:
+    params = {"$top": teto}
     params.update(OBRIGATORIOS)
     params.update(extras or {})
     if filtro_colecao:
@@ -80,24 +93,25 @@ def carrega(filtro_colecao: str | None = None, extras: dict | None = None) -> li
         codigo = str(campo(l, "cod_produto") or "").strip()
         if not codigo:
             continue
-        col = str(campo(l, "desc_colecao") or "").strip()
-        sub = str(campo(l, "desc_subcolecao") or "").strip()
+        col = limpa(campo(l, "desc_colecao"))
+        sub = limpa(campo(l, "desc_subcolecao"))
         saida.append({
             "codigo": codigo,
+            "interno": str(campo(l, "produtoac", "produto") or "").strip(),
             "colecao": col,
             "subcolecao": sub,
             "sigla": sigla(col, sub),
             "referencia": str(campo(l, "referencia") or "").strip(),
             "descricao": str(campo(l, "desc_produto", "descricao1") or "").strip(),
-            "tipo": str(campo(l, "desc_tipo") or "").strip(),
-            "grupo": str(campo(l, "desc_grupo") or "").strip(),
-            "departamento": str(campo(l, "desc_departamento") or "").strip(),
-            "marca": str(campo(l, "desc_marca") or "").strip(),
-            "divisao": str(campo(l, "desc_divisao") or "").strip(),
-            "categoria": str(campo(l, "desc_categoria") or "").strip(),
-            "status": str(campo(l, "desc_status") or "").strip(),
-            "grade": str(campo(l, "desc_grade") or "").strip(),
-            "fornecedor": str(campo(l, "desc_fornecedor") or "").strip(),
+            "tipo": limpa(campo(l, "desc_tipo")),
+            "grupo": limpa(campo(l, "desc_grupo")),
+            "departamento": limpa(campo(l, "desc_departamento")),
+            "marca": limpa(campo(l, "desc_marca")),
+            "divisao": limpa(campo(l, "desc_divisao")),
+            "categoria": limpa(campo(l, "desc_categoria")),
+            "status": limpa(campo(l, "desc_status")),
+            "grade": limpa(campo(l, "desc_grade")),
+            "fornecedor": limpa(campo(l, "desc_fornecedor")),
             "cadastro": str(mn.parse_data(campo(l, "data_cadastro")) or ""),
         })
     return saida
@@ -115,7 +129,8 @@ def main(argv=None):
     p.add_argument("--codigos", default="",
                    help="mostra so estes codigos, separados por virgula")
     p.add_argument("--extras", default="",
-                   help="CAMPO=0,ORDEM=1 — o que a sonda_parametros descobrir")
+                   help="acrescenta ou troca parametro do metodo, ex.: CAMPO=1")
+    p.add_argument("--limite", type=int, default=20000, help="teto de $top")
     args = p.parse_args(argv)
 
     extras = {}
@@ -125,7 +140,7 @@ def main(argv=None):
             extras[chave.strip()] = valor.strip()
 
     try:
-        produtos = carrega(args.colecao, extras)
+        produtos = carrega(args.colecao, extras, args.limite)
     except mn.Falha as e:
         print(f"\nFALHOU: {e}")
         print("Se recusou por parametro, rode a sonda e repasse o que ela achar:")
@@ -135,6 +150,9 @@ def main(argv=None):
         return 1
 
     print(f"\n{len(produtos)} produto(s) no cadastro")
+    if len(produtos) >= args.limite:
+        print(f"  ATENCAO: bateu no teto de {args.limite}. Veio cortado — "
+              "suba --limite ou filtre com --colecao.")
 
     pares = Counter((p["colecao"], p["subcolecao"], p["sigla"]) for p in produtos)
     print(f"\n{'coleção':16} {'subcoleção':14} {'sigla':6} {'produtos':>9}")
