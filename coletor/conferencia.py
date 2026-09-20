@@ -96,7 +96,22 @@ def _nome_limpo(desc_cor: str) -> str:
     return (nome or desc_cor or "").strip()
 
 
-def divide(codigo, linhas_do_codigo, saldo):
+def le_cadastro(caminho) -> dict[str, str]:
+    """codigo -> sigla da coleção, do CSV do cadastro do ERP."""
+    import csv as _csv
+    if not caminho:
+        return {}
+    mapa = {}
+    with open(caminho, newline="", encoding="utf-8-sig") as f:
+        for linha in _csv.DictReader(f, delimiter=";"):
+            cod = (linha.get("codigo") or "").strip()
+            sg = (linha.get("sigla") or "").strip().upper()
+            if cod and sg:
+                mapa[cod] = sg
+    return mapa
+
+
+def divide(codigo, linhas_do_codigo, saldo, colecao_erp=None, colecoes_das_linhas=None):
     """Reparte o transferido entre as linhas do código, pelo texto em vermelho.
 
     Devolve {linha: (quantidade, observação)}.
@@ -115,9 +130,22 @@ def divide(codigo, linhas_do_codigo, saldo):
     # do "resto" fazia, faz a outra aparecer zerada como se faltasse peça.
     sem_vermelho = [l for l, c in linhas_do_codigo if not c or eh_resto(c)]
     if len(sem_vermelho) > 1:
-        blocos = len(linhas_do_codigo)
-        obs = (f"codigo em {blocos} linhas sem vermelho (coleções diferentes); "
-               f"o ERP nao distingue coleção — total do codigo: {total:,.0f}")
+        # O cadastro do ERP diz a coleção do produto. Com ela, a linha do bloco
+        # certo fica com tudo e a outra é marcada como sobra de bloco antigo —
+        # sem cadastro, não há como escolher e o total vai para a primeira.
+        certa = None
+        if colecao_erp and colecoes_das_linhas:
+            certas = [l for l in sem_vermelho
+                      if colecoes_das_linhas.get(l) == colecao_erp]
+            if len(certas) == 1:
+                certa = certas[0]
+        if certa is not None:
+            return {l: (total if l == certa else 0,
+                        "" if l == certa
+                        else f"cadastro do ERP diz {colecao_erp}; linha de outro bloco")
+                    for l, _c in linhas_do_codigo}
+        obs = (f"codigo em {len(linhas_do_codigo)} linhas sem vermelho; "
+               f"sem cadastro para desempatar — total do codigo: {total:,.0f}")
         return {l: (total if l == sem_vermelho[0] else 0, obs)
                 for l, _c in linhas_do_codigo}
 
@@ -169,7 +197,9 @@ def colecao_dos_produtos(wb) -> dict[str, str]:
     return mapa
 
 
-def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: date):
+def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: date,
+          cadastro=None):
+    cadastro = cadastro or {}
     wb = openpyxl.load_workbook(caminho, data_only=False, rich_text=True)
     wv = openpyxl.load_workbook(caminho, data_only=True)
     if ABA in wb.sheetnames:
@@ -214,7 +244,10 @@ def monta(caminho: str, saida: str, saldo, primeira, colecoes, de: date, ate: da
             meta[linha] = (bloco, cores)
 
         for codigo in sorted(por_codigo):
-            reparte = divide(codigo, por_codigo[codigo], saldo)
+            colecoes_das_linhas = {l: (meta[l][0].get("colecao") or "").upper()
+                                   for l, _c in por_codigo[codigo]}
+            reparte = divide(codigo, por_codigo[codigo], saldo,
+                             cadastro.get(codigo), colecoes_das_linhas)
             vistos.add(codigo)
             for linha, _cores in por_codigo[codigo]:
                 bloco, cores = meta[linha]
@@ -299,6 +332,9 @@ def main(argv=None):
     p.add_argument("--colecoes", default="AW26,SS27")
     p.add_argument("--saida", default=None)
     p.add_argument("--sem-cache", action="store_true")
+    p.add_argument("--cadastro", metavar="CSV",
+                   help="produtos-erp.csv do coletor.produtos; usa a colecao do "
+                        "cadastro para desempatar codigo que esta em dois blocos")
     args = p.parse_args(argv)
 
     mn.USAR_CACHE = not args.sem_cache
@@ -331,7 +367,11 @@ def main(argv=None):
     print(f"  {docs} documento(s), {len(saldo)} combinacao(oes) produto+cor, "
           f"{pecas:,.0f} peca(s)")
 
-    r = monta(str(caminho), saida, saldo, primeira, colecoes, args.de, args.ate)
+    cadastro = le_cadastro(args.cadastro)
+    if cadastro:
+        print(f"  cadastro do ERP: {len(cadastro)} produto(s) com colecao")
+    r = monta(str(caminho), saida, saldo, primeira, colecoes, args.de, args.ate,
+              cadastro)
     print(f"\n  {saida}")
     print(f"  planilha {r['total_planilha']:,.0f}  x  ERP {r['total_erp']:,.0f}  "
           f"(diferenca {r['total_erp'] - r['total_planilha']:+,.0f})")

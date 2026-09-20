@@ -116,11 +116,28 @@ com data e origem.
 mantido na mão.** A entrada no estoque das lojas é a transferência da ELENA ES
 para elas, e isso está no MN, com data, produto, cor e tamanho.
 
-## D11 · A linha comercial é dado nosso
+## D11 · A linha comercial é dado nosso — a coleção não
 
-HOME, GLORIA KALIL, PIMA, CASHMERE, COURO e as coleções não existem como campo
-no ERP — hoje são o nome do bloco na planilha. Viram atributo próprio do
-produto, editável no app.
+**Revisto em 20/09.** Metade desta decisão estava errada.
+
+**A coleção É campo do cadastro do ERP.** O `334128` é coleção VERÃO,
+subcoleção 2027; o bloco `SS27` da planilha é a mesma informação escrita de
+outro jeito. `produtosac/Lista` devolve `DESC_COLECAO` e `DESC_SUBCOLECAO` por
+produto, junto com tipo, grupo, departamento, marca, divisão e categoria — as
+dimensões que a tela nova precisa para filtrar (D9), todas de graça.
+
+A sigla é montada em `coletor/produtos.py`: estação pela coleção (VERÃO → `SS`,
+INVERNO → `AW`) e ano pelos dois últimos dígitos da subcoleção. É o único ponto
+onde o vocabulário do ERP encontra o da planilha, e está isolado de propósito.
+
+**O que continua sendo nosso:** HOME, GLORIA KALIL, PIMA, CASHMERE, COURO — a
+linha comercial. Esses blocos não têm correspondente no cadastro e seguem sendo
+atributo do produto, editável no app.
+
+**O que isso destrava:** código que aparece em dois blocos — `330043` está em
+AW26 e SS27 — deixa de ser ambiguidade. O cadastro diz qual é a coleção certa,
+a linha daquele bloco fica com a transferência e a outra é marcada como sobra
+de bloco antigo, em vez de aparecer zerada como se faltasse peça.
 
 ## D12 · O e-commerce não tem estoque próprio
 
