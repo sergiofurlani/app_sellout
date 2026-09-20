@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from . import seguranca
 from ..core import motor, relatorio
 from ..core.leitura import ColunaAusente, abas_faltando
 
@@ -24,6 +25,7 @@ VALIDADE_HORAS = float(os.environ.get("SELLOUT_TTL_HORAS", "6"))
 TAMANHO_MAX_MB = float(os.environ.get("SELLOUT_MAX_MB", "60"))
 
 app = FastAPI(title="Sellout semanal")
+seguranca.instalar(app)
 app.mount("/static", StaticFiles(directory=BASE / "static"), name="static")
 templates = Jinja2Templates(directory=BASE / "templates")
 

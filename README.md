@@ -85,6 +85,8 @@ Variáveis opcionais:
 | `SELLOUT_WORKDIR` | `/tmp/sellout-jobs` | pasta de trabalho das rodadas |
 | `SELLOUT_TTL_HORAS` | `6` | por quanto tempo os arquivos ficam disponíveis |
 | `SELLOUT_MAX_MB` | `60` | tamanho máximo de cada upload |
+| `SELLOUT_SENHA` | — | **liga a senha do app**; sem ela o app fica aberto |
+| `SELLOUT_USUARIO` | `egrey` | usuário do login |
 
 Os arquivos enviados e gerados ficam só em disco temporário e são apagados depois do TTL —
 não há banco de dados nem persistência entre rodadas.
