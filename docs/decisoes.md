@@ -235,14 +235,27 @@ extrai o número certo.
 
 ### O que continua em aberto
 
-`TRANSFERÊNCIA DE ESTOQUE PA` (interno 4, **2.013 movimentos em 2026**),
-`ENTRADA SIMPLES DE ESTOQUE PRODUTO` (0, 312) e `SAÍDA SIMPLES PA` (2, 98)
-**não aparecem** em `vendas_consulta_completa` — são movimento direto de
-estoque, sem cliente e sem nota, e o método só enxerga documento de venda.
+Três eventos mexem no estoque da loja e **não aparecem** em
+`vendas_consulta_completa` — são movimento direto, sem cliente e sem nota, e o
+método só enxerga documento de venda.
 
-Não dá para afirmar que não movimentam as lojas; dá para afirmar que este
-caminho não as vê. Enquanto não forem medidas por outro método
-(`Entradas_Mercadoria`, `Lista_Por_Evento`), o Estoque inicial derivado é **a
+**`ENTRADA SIMPLES DE ESTOQUE PRODUTO` (interno 0, 312/ano) e `SAÍDA SIMPLES PA`
+(interno 2, 98/ano) são a correção de erro no envio para a loja** — mandou peça
+errada, dá baixa e entrada para acertar. Explicado pelo negócio em 20/09.
+
+Então eles **fazem parte do Estoque inicial**, como camada de ajuste sobre a
+transferência: `106` mais `0` menos `2`. São ~8 movimentos por semana contra
+~530 peças transferidas — correção de cerca de 1%, não estrutura. Mas sem eles
+o número fica sistematicamente um pouco alto, porque o erro de envio entra e a
+correção não.
+
+**`TRANSFERÊNCIA DE ESTOQUE PA` (interno 4) continua sem explicação, e é o
+grande.** São **2.013 movimentos em 2026**, quarto maior evento do ano, cerca de
+39 por semana. Se uma parte disso for Elena → loja ou loja → loja, não é camada
+de ajuste: é fluxo principal passando por fora da contagem.
+
+Enquanto o `4` não for medido por outro método (`Entradas_Mercadoria`,
+`Lista_Por_Evento`, `MovimentacaoPorGrade`), o Estoque inicial derivado é **a
 melhor estimativa disponível, não um número fechado** — e continua muito melhor
 que a produção total.
 
