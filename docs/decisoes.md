@@ -277,15 +277,38 @@ transferência: `106` mais `0` menos `2`. São ~8 movimentos por semana contra
 o número fica sistematicamente um pouco alto, porque o erro de envio entra e a
 correção não.
 
-**`TRANSFERÊNCIA DE ESTOQUE PA` (interno 4) continua sem explicação, e é o
-grande.** São **2.013 movimentos em 2026**, quarto maior evento do ano, cerca de
-39 por semana. Se uma parte disso for Elena → loja ou loja → loja, não é camada
-de ajuste: é fluxo principal passando por fora da contagem.
+### `TRANSFERÊNCIA DE ESTOQUE PA` (interno 4) — explicado em 20/09
 
-Enquanto o `4` não for medido por outro método (`Entradas_Mercadoria`,
-`Lista_Por_Evento`, `MovimentacaoPorGrade`), o Estoque inicial derivado é **a
-melhor estimativa disponível, não um número fechado** — e continua muito melhor
-que a produção total.
+2.013 movimentos em 2026, quarto maior evento do ano, ~39 por semana. Fica na
+expedição, com a logística, e tem **três usos**, todos entre as lojas e o
+e-commerce — nenhum deles traz peça de fora:
+
+1. **Loja → e-commerce.** O Site não tem estoque: vendeu, a loja transfere a
+   peça para ele faturar. É o mecanismo por trás da D12.
+2. **Loja → loja.** A vendedora pede uma peça que está na outra loja.
+3. **Loja → Bazar** (via e-commerce), quando o produto envelhece.
+
+**Isso resolve a dúvida sem precisar medir: o evento 4 não entra no Estoque
+inicial.** Ele não adiciona peça ao conjunto das lojas — movimenta dentro dele,
+ou tira. A entrada continua sendo `106` mais `0` menos `2`.
+
+Mas ele importa em dois outros pontos, e nos dois o risco é de errar para lados
+opostos:
+
+- **Loja → e-commerce não é perda de estoque.** A peça sai da loja porque *já
+  foi vendida*, e essa venda já está contada no evento `25`. Tratar a
+  transferência como baixa contaria a mesma peça duas vezes. Tem que ser
+  ignorada.
+- **Loja → Bazar é saída de verdade.** A peça deixa o universo do sellout. Se
+  não for subtraída, o denominador guarda peça que não está mais em loja — e o
+  sellout dos produtos antigos sai artificialmente baixo, justamente os que já
+  estão sendo liquidados.
+
+Ou seja: o evento 4 precisa ser lido **por destino**, e o destino mudar o sinal.
+Sem isso, ou dobra venda, ou infla denominador.
+
+`Lista_Por_Evento` traz `FILIAL` e `FILIAL_DESTINO` no documento e aceita
+`EVENTO` — é o método para medir isso. Ainda não foi chamado para o `4`.
 
 ---
 
