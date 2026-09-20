@@ -102,4 +102,5 @@ sellout/cli.py             execução pelo terminal
 coletor/mn.py              cliente da API Millennium (roda na rede da Egrey)
 coletor/valida_site.py     compara a venda por filial do MN com a planilha
 coletor/explora_entradas.py descobre por qual evento a peça entra no estoque da loja
+coletor/estoque_inicial.py  Estoque inicial pela venda entre filiais (evento 106)
 ```

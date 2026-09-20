@@ -176,6 +176,80 @@ Isso tem duas consequências opostas, e as duas importam:
 - **Venda:** esse evento **não pode** entrar no sellout como venda, senão a
   receita de varejo infla com movimentação interna.
 
+### Resolvido em 20/09 — é o evento 106
+
+A peça entra na loja pela **venda entre filiais**, evento interno **106**
+(`00108`), 1.186 movimentos em 2026. E a direção está em dois campos que não
+parecem filial:
+
+```
+cod_filial   = quem emite   -> origem
+cod_cliente  = para quem    -> destino
+```
+
+Na venda entre filiais **a loja é cliente da Elena**. Foi isso que escondeu o
+destino durante toda a investigação: procurávamos `filial_destino`, que existe
+nos métodos de relatório e vem vazio aqui.
+
+Semana de 31/08 a 07/09:
+
+| fluxo | docs | peças |
+|---|---:|---:|
+| ELENA ES → EGREY JDS | 18 | 305 |
+| ELENA ES → IGUATEMI | 16 | 228 |
+| EGREY JDS → ELENA ES | 1 | −2 |
+| | | **531 líquido** |
+
+**32 combinações produto+cor, 20 produtos.** O item traz `cod_produto`,
+`cod_cor`, `desc_cor` e `tamanho` — os códigos do ERP, os mesmos da planilha.
+Nada de de-para de cor: o saldo de abertura sai por cor direto, o que fecha
+também o ponto em aberto da D10.
+
+### A produção não é o que entra na loja — e a diferença é de 56%
+
+Comparando, por código, a aba Producao (o que chegou na Elena) com a
+transferência para as lojas na mesma semana:
+
+```
+producao total     826 peças   em 20 produtos
+transferido        531 peças   em 20 produtos
+diferença          295 peças
+```
+
+Os 295 são atacado e o que ficou na Elena. O padrão por produto confirma a
+leitura em vez de contrariá-la:
+
+- **`334059`: 56 peças produzidas, 0 transferidas.** Pela regra atual essas 56
+  entram no Estoque inicial de uma loja que não recebeu peça nenhuma.
+- **`334016`: 0 produzidas, 14 transferidas.** Produção de semana anterior,
+  enviada agora. Produzir e despachar não acontecem no mesmo dia, e é
+  justamente por isso que uma coluna não pode ser usada no lugar da outra.
+
+Cinco produtos aparecem só na transferência e quatro só na produção — todos
+casos de defasagem, nenhum de contradição.
+
+**Conclusão:** somar a aba Producao ao Estoque inicial infla o denominador do
+sellout em cerca de 56% no total, e erra de forma grosseira em produtos que
+foram produzidos para o atacado ou ainda não despacharam. `coletor/estoque_inicial.py`
+extrai o número certo.
+
+### O que continua em aberto
+
+`TRANSFERÊNCIA DE ESTOQUE PA` (interno 4, **2.013 movimentos em 2026**),
+`ENTRADA SIMPLES DE ESTOQUE PRODUTO` (0, 312) e `SAÍDA SIMPLES PA` (2, 98)
+**não aparecem** em `vendas_consulta_completa` — são movimento direto de
+estoque, sem cliente e sem nota, e o método só enxerga documento de venda.
+
+Não dá para afirmar que não movimentam as lojas; dá para afirmar que este
+caminho não as vê. Enquanto não forem medidas por outro método
+(`Entradas_Mercadoria`, `Lista_Por_Evento`), o Estoque inicial derivado é **a
+melhor estimativa disponível, não um número fechado** — e continua muito melhor
+que a produção total.
+
+---
+
+#### Histórico da investigação
+
 **O que a lista de eventos mostrou (18/09):** `eventos/Eventos_InfluenciaEstoque`
 devolveu 20 eventos, **todos de entrada** — o evento de saída "venda entre
 filiais" não está lá. Isso melhora a situação em vez de piorar: o que forma o
