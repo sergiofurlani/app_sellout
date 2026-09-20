@@ -232,6 +232,13 @@ def _do_cache(dia: date, evento: int):
     return CACHE / f"{dia.isoformat()}-ev{evento}.json"
 
 
+def _do_cache_periodo(inicio: date, fim: date, evento: int):
+    """Fatia fechada é imutável; fatia que alcança hoje, não."""
+    if not USAR_CACHE or fim >= date.today():
+        return None
+    return CACHE / f"{inicio.isoformat()}_{fim.isoformat()}-ev{evento}.json"
+
+
 def documentos_do_dia(dia: date, eventos=EVENTOS_VENDA + (EVENTO_DEVOLUCAO,)) -> list[dict]:
     """Uma chamada por evento. Sem TIPO — com TIPO=S a devolução some."""
     saida = []
@@ -268,6 +275,62 @@ def documentos_do_dia(dia: date, eventos=EVENTOS_VENDA + (EVENTO_DEVOLUCAO,)) ->
         for doc in docs:
             doc["_evento"] = evento
         saida.extend(docs)
+    return saida
+
+
+def _meses(de: date, ate: date):
+    """Fatias mensais [inicio, fim] cobrindo o período."""
+    atual = de.replace(day=1)
+    while atual <= ate:
+        if atual.month == 12:
+            proximo = atual.replace(year=atual.year + 1, month=1)
+        else:
+            proximo = atual.replace(month=atual.month + 1)
+        yield max(atual, de), min(proximo - timedelta(days=1), ate)
+        atual = proximo
+
+
+def documentos_do_periodo(de: date, ate: date, eventos) -> list[dict]:
+    """Como documentos_do_dia, mas em fatias de um mês.
+
+    Para um evento de baixo volume — o 106 faz ~35 documentos por semana —
+    puxar dia a dia são 265 chamadas onde 9 bastam. A checagem de `$top`
+    continua valendo: se a fatia encher o teto, ela é refeita dia a dia em vez
+    de devolver resultado truncado em silêncio.
+    """
+    saida = []
+    for evento in eventos:
+        for inicio, fim in _meses(de, ate):
+            arq = _do_cache_periodo(inicio, fim, evento)
+            docs = None
+            if arq and arq.exists():
+                try:
+                    docs = json.loads(arq.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    docs = None
+
+            if docs is None:
+                dados = requisita(
+                    VENDAS,
+                    **{"$top": TOP, "DATAI": inicio.isoformat(), "DATAF": fim.isoformat(),
+                       "EVENTO": evento, "BVENDEDORES": "true"},
+                )
+                docs = valores(dados)
+                if len(docs) >= TOP:
+                    # fatia cheia demais: refaz dia a dia, que tem teto por dia
+                    docs = []
+                    for d in dias(inicio, fim):
+                        docs.extend(documentos_do_dia(d, eventos=(evento,)))
+                elif arq:
+                    try:
+                        arq.parent.mkdir(parents=True, exist_ok=True)
+                        arq.write_text(json.dumps(docs), encoding="utf-8")
+                    except OSError:
+                        pass
+
+            for doc in docs:
+                doc["_evento"] = evento
+            saida.extend(docs)
     return saida
 
 
