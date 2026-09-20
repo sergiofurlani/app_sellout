@@ -169,3 +169,6 @@ select {
   margin-bottom: 14px;
 }
 select:focus { outline: 2px solid var(--marca); outline-offset: -1px; }
+
+.opcional { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px dashed #d4d4d4; }
+.opcional .ajuda { margin: .4rem 0 0; font-size: .85rem; color: #666; line-height: 1.45; }

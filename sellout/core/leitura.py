@@ -101,6 +101,10 @@ class Fontes:
     avisos: list = field(default_factory=list)
     colunas_usadas: dict = field(default_factory=dict)
     cores_conhecidas: set = field(default_factory=set)
+    # Entradas vindas do ERP (evento 106, ELENA ES -> lojas), no formato
+    # cod -> cor normalizada -> quantidade. Vazio quando o arquivo não veio:
+    # aí vale a regra antiga (D6), e o relatório diz qual foi usada.
+    entradas_erp: dict = field(default_factory=dict)
 
     def eh_cor_conhecida(self, nome) -> bool:
         """O nome aparece como cor em alguma aba de origem?
@@ -325,7 +329,45 @@ def abas_faltando(caminho) -> list[str]:
     return faltando
 
 
-def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None) -> Fontes:
+def carrega_entradas_erp(caminho) -> dict:
+    """Lê o CSV que o coletor gera: codigo;codigo_cor;cor;quant.
+
+    É a ponte entre as duas metades do sistema. O MN só responde dentro da
+    rede da Egrey, então o app na nuvem nunca vai buscar isto sozinho: o
+    coletor puxa lá e o arquivo sobe junto com as planilhas.
+
+    Sem o arquivo, `entradas_erp` fica vazio e tudo segue como antes.
+    """
+    import csv
+
+    entradas = defaultdict(lambda: defaultdict(float))
+    with open(caminho, newline="", encoding="utf-8-sig") as f:
+        amostra = f.read(4096)
+        f.seek(0)
+        try:
+            dialeto = csv.Sniffer().sniff(amostra, delimiters=";,\t")
+        except csv.Error:
+            dialeto = csv.excel
+            dialeto.delimiter = ";"
+        for linha in csv.DictReader(f, dialect=dialeto):
+            chaves = {k.strip().lower(): v for k, v in linha.items() if k}
+            cod = norm_codigo(chaves.get("codigo"))
+            if not cod:
+                continue
+            q = num(chaves.get("quant") or chaves.get("quantidade"))
+            if not q:
+                continue
+            # o ERP manda "0308 - VERMELHO"; as abas de origem trazem só o
+            # nome, e é por ele que a divisão por cor casa
+            cor = str(chaves.get("cor") or "")
+            if " - " in cor:
+                cor = cor.split(" - ", 1)[1]
+            entradas[cod][nrm(cor)] += q
+    return {c: dict(v) for c, v in entradas.items()}
+
+
+def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None,
+                   entradas_erp=None) -> Fontes:
     """Lê Estoque, Vendas, Producao, Preco e Produtos da planilha geral.
 
     `filiais_estoque` restringe quais filiais entram na soma de estoque.
@@ -338,6 +380,9 @@ def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None) -> Font
     colunas_forcadas = colunas_forcadas or {}
     wb = openpyxl.load_workbook(caminho, data_only=True)
     f = Fontes()
+    if entradas_erp:
+        f.entradas_erp = (entradas_erp if isinstance(entradas_erp, dict)
+                          else carrega_entradas_erp(entradas_erp))
 
     def qtd_de(ws, aba, linha, coluna, rotulo):
         """Lê um número tolerando texto; registra a célula quando não dá."""

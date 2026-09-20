@@ -77,8 +77,8 @@ class Planilha:
 # Etapa 1 — análise
 # --------------------------------------------------------------------------- #
 
-def analisar(caminho_geral, caminho_classicos) -> dict:
-    fontes = carrega_fontes(caminho_geral)
+def analisar(caminho_geral, caminho_classicos, entradas_erp=None) -> dict:
+    fontes = carrega_fontes(caminho_geral, entradas_erp=entradas_erp)
     planilhas = [Planilha(caminho_geral, "Geral"), Planilha(caminho_classicos, "Clássicos")]
 
     existentes = set()
@@ -166,10 +166,12 @@ def analisar(caminho_geral, caminho_classicos) -> dict:
 # Etapa 2 — processamento
 # --------------------------------------------------------------------------- #
 
-def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos, decisoes) -> dict:
+def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos,
+              decisoes, entradas_erp=None) -> dict:
     filiais = decisoes.get("filiais_estoque") or None
     fontes = carrega_fontes(caminho_geral, filiais_estoque=filiais,
-                            colunas_forcadas=decisoes.get("colunas"))
+                            colunas_forcadas=decisoes.get("colunas"),
+                            entradas_erp=entradas_erp)
     rotulo_data = decisoes.get("data_sellout") or rotulo_sellout()
     exige_estoque_prod = decisoes.get("producao_exige_estoque", True)
     aprovados = set(decisoes.get("novos") or [])
@@ -178,6 +180,7 @@ def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos, de
     rel = {
         "alterados": 0, "novos_inseridos": [], "por_cor": [], "producao": [],
         "producao_nao_aplicada": [], "mantidos": [], "pendentes": [],
+        "estoque_inicial_novos": [],
         "nao_encontrados": [], "sem_cores": [], "cores_sem_destino": [], "sem_preco": [],
         "formulas_ajustadas": [], "nivel": {},
         "avisos": list(fontes.avisos),
@@ -338,6 +341,8 @@ def _processar_planilha(p, fontes, rotulo_data, exige_estoque_prod,
             tem_est = any(c in cores_est for c in filtro)
             tem_ven = any(c in cores_ven for c in filtro)
             qtd_prod = sum(cores_pro.get(c, 0) for c in filtro)
+            cores_erp = fontes.entradas_erp.get(cod, {})
+            qtd_erp = sum(cores_erp.get(c, 0) for c in filtro)
 
             vendas_por_col = defaultdict(int)
             for c in filtro:
@@ -377,7 +382,21 @@ def _processar_planilha(p, fontes, rotulo_data, exige_estoque_prod,
                 ws.cell(r, col_atual).value = qtd_est
                 for col in filiais_cols.values():
                     ws.cell(r, col).value = vendas_por_col.get(col, 0)
-                ws.cell(r, col_inicial).value = max(qtd_prod, qtd_est + qtd_ven)
+                # D14: o Estoque inicial de um produto novo é o que a ELENA ES
+                # transferiu para as lojas, não a produção. A produção chega
+                # inteira na Elena, varejo e atacado juntos; só parte vira
+                # estoque de loja. Aqui o número NASCE — é a única hora em que
+                # dá para acertá-lo sem mexer em histórico.
+                if qtd_erp > 0:
+                    inicial, origem = qtd_erp, "ERP"
+                else:
+                    inicial, origem = max(qtd_prod, qtd_est + qtd_ven), "produção"
+                ws.cell(r, col_inicial).value = inicial
+                rel["estoque_inicial_novos"].append({
+                    "planilha": p.rotulo, "aba": aba, "linha": r, "codigo": cod,
+                    "descricao": ws.cell(r, 3).value, "origem": origem,
+                    "valor": inicial, "erp": qtd_erp, "producao": qtd_prod,
+                    "estoque_mais_vendas": qtd_est + qtd_ven})
                 if qtd_prod:
                     usados_producao.add(cod)
                     rel["producao"].append({

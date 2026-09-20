@@ -33,11 +33,15 @@ def main(argv=None):
     p.add_argument("classicos", help="planilha Sellout Clássicos.xlsx")
     p.add_argument("-s", "--saida", default="saida", help="pasta de destino")
     p.add_argument("--decisoes", help="json com as decisões da rodada")
+    p.add_argument("--entradas-erp",
+                   help="CSV do coletor com as transferências da ELENA ES "
+                        "(codigo;codigo_cor;cor;quant)")
     p.add_argument("--so-analisar", action="store_true",
                    help="imprime a análise em json e não gera arquivos")
     args = p.parse_args(argv)
 
-    analise = motor.analisar(args.geral, args.classicos)
+    analise = motor.analisar(args.geral, args.classicos,
+                             entradas_erp=args.entradas_erp)
     if args.so_analisar:
         print(json.dumps(analise, ensure_ascii=False, indent=2, default=str))
         return 0
@@ -48,11 +52,12 @@ def main(argv=None):
 
     saida = Path(args.saida)
     saida.mkdir(parents=True, exist_ok=True)
+    erp = args.entradas_erp
     rel = motor.processar(
         args.geral, args.classicos,
         str(saida / "sellout geral atualizado.xlsx"),
         str(saida / "Sellout Clássicos atualizado.xlsx"),
-        decisoes,
+        decisoes, entradas_erp=erp,
     )
     relatorio.gerar(rel, str(saida / "relatorio de conferencia.xlsx"))
 

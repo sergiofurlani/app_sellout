@@ -83,7 +83,8 @@ def saude():
 
 
 @app.post("/analisar", response_class=HTMLResponse)
-async def analisar(request: Request, geral: UploadFile, classicos: UploadFile):
+async def analisar(request: Request, geral: UploadFile, classicos: UploadFile,
+                   entradas_erp: UploadFile | None = None):
     _limpar_antigos()
     job = uuid.uuid4().hex
     pasta = TRABALHO / job
@@ -94,6 +95,14 @@ async def analisar(request: Request, geral: UploadFile, classicos: UploadFile):
     await _gravar(geral, caminho_geral)
     await _gravar(classicos, caminho_clas)
 
+    # Opcional: o CSV que o coletor gera com as transferências da ELENA ES.
+    # O MN só responde dentro da rede da Egrey, então este arquivo é a única
+    # ponte — sem ele a rodada segue pela regra antiga (D6).
+    caminho_erp = None
+    if entradas_erp is not None and entradas_erp.filename:
+        caminho_erp = pasta / "entradas-erp.csv"
+        await _gravar(entradas_erp, caminho_erp)
+
     faltando = abas_faltando(caminho_geral)
     if faltando:
         return templates.TemplateResponse(
@@ -102,7 +111,8 @@ async def analisar(request: Request, geral: UploadFile, classicos: UploadFile):
             status_code=400)
 
     try:
-        analise = motor.analisar(str(caminho_geral), str(caminho_clas))
+        analise = motor.analisar(str(caminho_geral), str(caminho_clas),
+                                 entradas_erp=str(caminho_erp) if caminho_erp else None)
     except ColunaAusente as e:
         return templates.TemplateResponse(
             request, "index.html", {"erro": str(e)}, status_code=400)
@@ -152,6 +162,8 @@ async def processar(request: Request, job: str = Form(...), data_sellout: str = 
             str(pasta / "geral.xlsx"), str(pasta / "classicos.xlsx"),
             str(pasta / ARQUIVOS["geral"]), str(pasta / ARQUIVOS["classicos"]),
             decisoes,
+            entradas_erp=str(pasta / "entradas-erp.csv")
+            if (pasta / "entradas-erp.csv").exists() else None,
         )
     except Exception as e:
         logging.exception("falha ao processar a rodada")

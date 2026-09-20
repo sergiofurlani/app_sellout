@@ -17,13 +17,16 @@ arquivos. Nada é gravado sem passar pela tela de conferência.
    **vermelho** ao final da descrição diz de quais cores aquela linha trata; a linha sem
    vermelho fica com o restante. `DEMAIS CORES` também significa o restante. A comparação
    ignora acentos e resolve abreviações (`OFF` → `OFF-WHITE`, `AMARELA` → `AMARELO`).
-5. **Produção** — soma a quantidade da aba Producao no Estoque inicial, anexando à fórmula
+5. **Estoque inicial do produto novo** — quando o CSV de entradas do ERP é enviado, o
+   Estoque inicial nasce do que a ELENA ES transferiu para as lojas (evento 106), e não da
+   produção, que inclui o atacado. Ver D14.
+6. **Produção** — soma a quantidade da aba Producao no Estoque inicial, anexando à fórmula
    existente (`=24+28` vira `=24+28+5`) para preservar o rastro. Por padrão só entra em
    produto que tenha estoque atual.
-6. **Produtos novos** — códigos da aba Produtos que ainda não existem nas planilhas entram ao
+7. **Produtos novos** — códigos da aba Produtos que ainda não existem nas planilhas entram ao
    final do bloco da sua coleção, com as fórmulas replicadas. O bloco é encontrado pelo nome
    da coleção na coluna C, então funciona sozinho quando a coleção virar.
-7. **Fórmulas** — refaz os subtotais de cada bloco e o total geral depois do deslocamento das
+8. **Fórmulas** — refaz os subtotais de cada bloco e o total geral depois do deslocamento das
    linhas, e recalcula o **Nível de Estoque** cruzando a aba Estoque com a aba Preco por
    Código + Código Cor + Tamanho.
 
@@ -38,6 +41,7 @@ Ao final sai também um **relatório de conferência** com o que foi feito e o q
 | Produção só com estoque atual | ligado |
 | Códigos duplicados que o vermelho não resolve | manter as linhas como estão |
 | Produtos novos | marcados os que têm estoque |
+| Estoque inicial do produto novo | do CSV do ERP quando enviado; senão `max(produção, estoque+vendas)` |
 
 ## Documentação
 

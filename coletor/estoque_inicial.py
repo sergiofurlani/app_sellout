@@ -127,6 +127,8 @@ def main(argv=None):
     p.add_argument("--de", type=dia, required=True)
     p.add_argument("--ate", type=dia, required=True)
     p.add_argument("-s", "--salvar", help="grava o detalhe por item num CSV")
+    p.add_argument("--para-app", metavar="ARQUIVO",
+                   help="CSV agregado que o app le: codigo;codigo_cor;cor;quant")
     p.add_argument("--sem-cache", action="store_true")
     args = p.parse_args(argv)
 
@@ -182,6 +184,20 @@ def main(argv=None):
     print("    " + "-" * 44)
     for (cod, cod_cor, cor), q in sorted(consolidado.items(), key=lambda x: -x[1])[:15]:
         print(f'    {cod:10} {cod_cor:>5} {cor[:18]:18} {q:>7,.0f}')
+
+    if args.para_app:
+        # Formato que sellout.core.leitura.carrega_entradas_erp espera. Uma
+        # linha por produto+cor, ja liquido de devolucao e realocacao.
+        with open(args.para_app, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f, delimiter=";")
+            w.writerow(["codigo", "codigo_cor", "cor", "quant"])
+            agregado = defaultdict(float)
+            for (cod, cod_cor, cor, _loja), q in saldo.items():
+                agregado[(cod, cod_cor, cor)] += q
+            for (cod, cod_cor, cor), q in sorted(agregado.items()):
+                if q:
+                    w.writerow([cod, cod_cor, cor, f"{q:g}"])
+        print(f"\n  Para o app: {args.para_app}")
 
     if args.salvar:
         with open(args.salvar, "w", newline="", encoding="utf-8-sig") as f:

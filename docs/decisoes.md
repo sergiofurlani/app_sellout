@@ -358,3 +358,51 @@ ELENA ES → lojas.
    filial.
 4. Ver o que fazer com a produção que vai para o atacado e nunca chega às lojas:
    pela nova regra ela simplesmente não entra, o que parece certo.
+
+
+## D14 · O Estoque inicial do produto novo vem do ERP, não da produção
+
+Decidido em 20/09, como primeira aplicação prática da D13.
+
+Quando a rodada insere um produto que ainda não tinha linha, ela precisa
+inventar um Estoque inicial. A regra da D6 era `max(produção, estoque + vendas)`
+— o melhor palpite disponível quando a produção era a única fonte.
+
+**Agora existe fonte melhor.** O CSV que o coletor gera (evento 106, ELENA ES →
+lojas) diz quantas peças de fato chegaram na loja, por produto e por cor. Com o
+arquivo presente, é esse o número. Sem ele, vale a D6 e o relatório diz qual
+regra foi usada em cada linha.
+
+**Por que só no produto novo, por enquanto:** é a única hora em que o número
+*nasce*. Para quem já tem linha, mudar o Estoque inicial significa reescrever um
+saldo acumulado por meses — outra conversa, com outro risco. No produto novo não
+há histórico a preservar: ou nasce certo, ou nasce errado e fica.
+
+**O tamanho disso**, medido na rodada de 18/09 com as transferências de
+31/08 a 07/09:
+
+| código | ERP | produção | descrição |
+|---|---:|---:|---|
+| 334066 | 48 | 111 | BERMUDA PALA LINHO |
+| 334044 | 52 | 106 | CAMISA SUMMER LINHO |
+| 334128 | 34 | 86 | CALÇA SUMMER PREGAS LINHO |
+| 334127 | 10 | 31 | BLAZER SUMMER BOX LINHO |
+| 334037 | 29 | 50 | BLAZER SUMMER BOX LINHO |
+
+Doze produtos, **502 peças pelo ERP contra 762 pela regra antiga**. O
+denominador do sellout nasceria 52% maior, e o percentual, um terço menor —
+justamente nos lançamentos, que é onde se decide repetir, aumentar ou cortar.
+
+**Como o arquivo chega:** o MN só responde dentro da rede da Egrey, então o app
+na nuvem nunca vai buscá-lo. O coletor puxa lá e o CSV sobe junto com as
+planilhas, num campo opcional da primeira tela.
+
+```
+python -m coletor.estoque_inicial --de 2026-01-01 --ate 2026-09-07 \
+    --para-app entradas-erp.csv
+```
+
+**Se for revista:** o passo seguinte natural é o incremento semanal — hoje a
+rodada soma a aba Producao ao Estoque inicial de quem já tem linha (D5). Pela
+mesma lógica, deveria somar a transferência. Fica para depois de a conferência
+fechar, porque ali há histórico em jogo.
