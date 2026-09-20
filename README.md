@@ -53,6 +53,17 @@ Ao final sai também um **relatório de conferência** com o que foi feito e o q
 A tag `v1.0` marca o processo por planilha funcionando e conferido — é o ponto
 de retorno caso a migração para banco não dê certo.
 
+## Duas versões vivas
+
+| branch | serviço | o que é |
+|---|---|---|
+| `main` | `sellout` | a versão por planilha, **estável**. Não recebe a migração. |
+| `banco` | `sellout-banco` | a versão nova, com Postgres. É onde se trabalha. |
+
+A `main` só recebe correção de defeito. Enquanto a `banco` não estiver
+conferida, a rodada semanal continua sendo feita na `main`, e voltar atrás é
+parar de usar a URL nova — sem desfazer nada.
+
 ## Rodar localmente
 
 ```bash
@@ -87,6 +98,7 @@ Variáveis opcionais:
 | `SELLOUT_MAX_MB` | `60` | tamanho máximo de cada upload |
 | `SELLOUT_SENHA` | — | **liga a senha do app**; sem ela o app fica aberto |
 | `SELLOUT_USUARIO` | `egrey` | usuário do login |
+| `DATABASE_URL` | — | Postgres (só na branch `banco`); sem ela o app roda por planilha |
 
 Os arquivos enviados e gerados ficam só em disco temporário e são apagados depois do TTL —
 não há banco de dados nem persistência entre rodadas.
@@ -105,4 +117,8 @@ coletor/mn.py              cliente da API Millennium (roda na rede da Egrey)
 coletor/valida_site.py     compara a venda por filial do MN com a planilha
 coletor/explora_entradas.py descobre por qual evento a peça entra no estoque da loja
 coletor/estoque_inicial.py  Estoque inicial pela venda entre filiais (evento 106)
+sellout/web/seguranca.py   senha do app (HTTP Basic)
+sellout/db/conexao.py      conexão com o Postgres
+sellout/db/migracoes.py    migrações versionadas
+sellout/db/migracoes/      os .sql, aplicados em ordem numérica
 ```
