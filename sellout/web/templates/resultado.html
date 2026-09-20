@@ -58,6 +58,32 @@
 </div>
 {% endif %}
 
+{% if banco %}
+<div class="painel">
+  <h2>Retrato gravado no banco</h2>
+  {% if banco.erro %}
+    <p class="aviso">Não gravou: {{ banco.erro }}</p>
+    <p>A planilha acima está pronta e correta — a gravação no banco é paralela
+       e não interfere nela. Mas enquanto isso falhar, o histórico novo para de
+       crescer.</p>
+  {% else %}
+    <table class="resumo">
+      <tr><td>Snapshot</td><td class="num">#{{ banco.snapshot }}</td></tr>
+      <tr><td>Estoque</td><td class="num">{{ banco.estoque }} linhas</td></tr>
+      <tr><td>Vendas</td><td class="num">{{ banco.vendas }} linhas</td></tr>
+      <tr><td>Produção</td><td class="num">{{ banco.producao }} linhas</td></tr>
+      <tr><td>Preço</td><td class="num">{{ banco.preco }} linhas</td></tr>
+      <tr><td>Produtos · cores · filiais</td>
+          <td class="num">{{ banco.produtos }} · {{ banco.cores }} · {{ banco.filiais }}</td></tr>
+      {% if banco.producao_sem_codigo_cor %}
+      <tr><td>Produção sem código de cor identificado</td>
+          <td class="num">{{ banco.producao_sem_codigo_cor }}</td></tr>
+      {% endif %}
+    </table>
+  {% endif %}
+</div>
+{% endif %}
+
 <div class="acoes">
   <a class="voltar" href="/">Fazer outra rodada</a>
 </div>

@@ -121,4 +121,5 @@ sellout/web/seguranca.py   senha do app (HTTP Basic)
 sellout/db/conexao.py      conexão com o Postgres
 sellout/db/migracoes.py    migrações versionadas
 sellout/db/migracoes/      os .sql, aplicados em ordem numérica
+sellout/db/ingestao.py     grava a rodada como snapshot, em paralelo ao Excel
 ```

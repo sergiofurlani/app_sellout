@@ -8,6 +8,7 @@ import os
 import shutil
 import time
 import uuid
+from datetime import date
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
@@ -17,6 +18,8 @@ from fastapi.templating import Jinja2Templates
 
 from . import seguranca
 from ..core import motor, relatorio
+from ..core.leitura import carrega_fontes
+from .. import db
 from ..core.leitura import ColunaAusente, abas_faltando
 
 BASE = Path(__file__).parent
@@ -159,8 +162,28 @@ async def processar(request: Request, job: str = Form(...), data_sellout: str = 
     relatorio.gerar(rel, str(pasta / ARQUIVOS["relatorio"]))
     (pasta / "relatorio.json").write_text(json.dumps(rel, ensure_ascii=False, default=str))
 
+    # Gravação no banco, em paralelo. A planilha já está pronta a esta altura:
+    # nada aqui pode impedi-la de ser baixada. Por isso vem DEPOIS, e por isso
+    # gravar_se_der engole o erro em vez de propagar.
+    banco = None
+    if db.disponivel():
+        try:
+            fontes = carrega_fontes(
+                str(pasta / "geral.xlsx"),
+                filiais_estoque=decisoes.get("filiais") or None,
+                colunas_forcadas=decisoes.get("colunas") or None,
+            )
+            banco = db.gravar_se_der(
+                fontes, date.today(), origem="upload",
+                observacao=decisoes.get("data_sellout"))
+        except Exception as e:                     # noqa: BLE001
+            logging.exception("falha ao gravar o snapshot")
+            banco = {"erro": "%s: %s" % (type(e).__name__, e)}
+        if banco and banco.get("erro"):
+            logging.error("snapshot nao gravado: %s", banco["erro"])
+
     return templates.TemplateResponse(request, "resultado.html", {
-        "job": job, "rel": rel, "decisoes": decisoes,
+        "job": job, "rel": rel, "decisoes": decisoes, "banco": banco,
     })
 
 

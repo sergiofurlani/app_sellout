@@ -83,6 +83,12 @@ def colecao_do_bloco(titulo) -> str | None:
 class Fontes:
     estoque: dict = field(default_factory=dict)        # cod -> cor -> qtd
     linhas_estoque: list = field(default_factory=list)  # (cod, cor, codcor, tam, qtd)
+    # Grão cru, para gravar no banco: uma entrada por linha da aba, com a
+    # filial e o tamanho preservados. O resto do Fontes agrega por produto e
+    # cor porque é o que a planilha precisa; o banco quer o que o arquivo
+    # disse, sem filtro — filtrar filial é decisão de consulta (D12).
+    linhas: dict = field(default_factory=lambda: {
+        "estoque": [], "vendas": [], "producao": [], "preco": []})
     vendas: dict = field(default_factory=dict)          # cod -> cor -> filial -> qtd
     producao: dict = field(default_factory=dict)        # cod -> cor -> qtd
     preco: dict = field(default_factory=dict)           # (cod, codcor, tam) -> valor
@@ -378,6 +384,9 @@ def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None) -> Font
         f.preco[(cod, codcor, tam)] = valor
         f.preco_cor.setdefault((cod, codcor), valor)
         f.preco_produto.setdefault(cod, valor)
+        if cod:
+            f.linhas["preco"].append(
+                {"codigo": cod, "codigo_cor": codcor, "tamanho": tam, "preco": valor})
 
     vocab_tamanho = {t for (_c, _cc, t) in f.preco}
     vocab_codigo_cor = {cc for (_c, cc, _t) in f.preco}
@@ -395,10 +404,19 @@ def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None) -> Font
         filial = (est.cell(r, c["filial"]).value or "").strip() if c["filial"] else ""
         if filial and filial not in vistas:
             vistas.append(filial)
+        cor_bruta = texto(est.cell(r, c["cor"]).value)
+        codcor_bruto = norm_codigo(est.cell(r, c["codigo_cor"]).value)
+        tam_bruto = norm_codigo(est.cell(r, c["tamanho"]).value)
+        qtd_bruta = qtd_de(est, "Estoque", r, c["qtde"], "ESTOQUE ATUAL")
+        # o banco guarda a linha como o arquivo mandou, inclusive a filial que
+        # a planilha vai descartar
+        f.linhas["estoque"].append({
+            "codigo": cod, "codigo_cor": codcor_bruto, "tamanho": tam_bruto,
+            "filial": filial, "qtd": qtd_bruta, "cor": cor_bruta})
         if filiais_estoque and filial not in filiais_estoque:
             continue
         cor = nrm(est.cell(r, c["cor"]).value)
-        qtd = qtd_de(est, "Estoque", r, c["qtde"], "ESTOQUE ATUAL")
+        qtd = qtd_bruta
         f.estoque[cod][cor] += qtd
         f.linhas_estoque.append((
             cod, cor,
@@ -419,8 +437,14 @@ def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None) -> Font
         filial = (ven.cell(r, c["filial"]).value or "").strip().upper() if c["filial"] else ""
         if filial and filial not in filiais_v:
             filiais_v.append(filial)
-        f.vendas[cod][nrm(ven.cell(r, c["cor"]).value)][filial] += \
-            qtd_de(ven, "Vendas", r, c["qtde"], "Qtde")
+        qtd_v = qtd_de(ven, "Vendas", r, c["qtde"], "Qtde")
+        f.vendas[cod][nrm(ven.cell(r, c["cor"]).value)][filial] += qtd_v
+        f.linhas["vendas"].append({
+            "codigo": cod,
+            "codigo_cor": norm_codigo(ven.cell(r, c["codigo_cor"]).value) if c["codigo_cor"] else "",
+            "tamanho": norm_codigo(ven.cell(r, c["tamanho"]).value) if c["tamanho"] else "",
+            "filial": filial, "qtd": qtd_v,
+            "cor": texto(ven.cell(r, c["cor"]).value)})
     f.filiais_vendas = filiais_v
 
     pro = wb["Producao"]
@@ -441,6 +465,10 @@ def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None) -> Font
             negativas += 1
             continue
         f.producao[cod][nrm(pro.cell(r, c["cor"]).value)] += q
+        f.linhas["producao"].append({
+            "codigo": cod, "codigo_cor": "",
+            "tamanho": norm_codigo(pro.cell(r, c["tamanho"]).value) if c["tamanho"] else "",
+            "qtd": q, "cor": texto(pro.cell(r, c["cor"]).value)})
     if negativas:
         f.avisos.append(
             f"Producao: {negativas} linha(s) com quantidade negativa ignorada(s) "
