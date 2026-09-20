@@ -41,6 +41,13 @@ CANDIDATOS = {
     "ORDEM": ["", "0", "1", "PRODUTO", "DATA", "FILIAL", "CODIGO", "ALFABETICA",
               "DESCRICAO"],
     "TIPO": ["", "E", "S", "T", "A", "0", "1", "2", "TODOS"],
+    # CAMPO num método de listagem costuma ser o campo pelo qual se busca —
+    # então os candidatos são os próprios nomes de campo que o método devolve.
+    "CAMPO": ["", "COD_PRODUTO", "CODIGO", "PRODUTO", "PRODUTOAC", "REFERENCIA",
+              "DESCRICAO", "DESCRICAO1", "DESC_PRODUTO", "NOME", "COLECAO",
+              "DESC_COLECAO", "TODOS", "0", "1"],
+    "FILTRO": ["", "TODOS", "=", "IGUAL", "CONTEM", "CONTENDO", "INICIA",
+               "INICIADO", "LIKE", "0", "1", "2", "N", "S"],
 }
 
 
@@ -67,7 +74,8 @@ def tenta(caminho: str, params: dict) -> tuple[bool, str, list]:
         if "not found in list" in msg:
             import re
             achado = re.search(r"parameter (\w+)", msg)
-            return False, f"recusou {achado.group(1) if achado else '?'}", []
+            qual = achado.group(1) if achado else "?"
+            return False, f"recusou {qual}", []
         return False, msg[:90], []
     return True, f"{len(linhas)} linha(s)", linhas
 
@@ -77,16 +85,21 @@ def main(argv=None):
         description="Tenta valores para um parametro de relatorio do MN")
     p.add_argument("metodo", help="grupo/Metodo, ex.: saidas/MovimentacaoPorGrade")
     p.add_argument("--parametro", required=True, help="QUEBRA, LAYOUT, ORDEM, TIPO")
-    p.add_argument("--de", type=dia, required=True)
-    p.add_argument("--ate", type=dia, required=True)
+    p.add_argument("--de", type=dia, default=date.today())
+    p.add_argument("--ate", type=dia, default=date.today())
     p.add_argument("--extras", default="", help="OUTRO=valor,OUTRO2=valor")
     p.add_argument("--valores", default="",
                    help="lista propria, separada por virgula (substitui a embutida)")
     p.add_argument("--top", type=int, default=50)
+    p.add_argument("--sem-datas", action="store_true",
+                   help="metodo de cadastro nao aceita DATAI/DATAF")
     args = p.parse_args(argv)
 
     caminho = f"/api/millenium/{args.metodo.strip('/')}"
-    base = {"$top": args.top, "DATAI": args.de.isoformat(), "DATAF": args.ate.isoformat()}
+    base = {"$top": args.top}
+    if not args.sem_datas:
+        base["DATAI"] = args.de.isoformat()
+        base["DATAF"] = args.ate.isoformat()
     base.update(pares(args.extras))
 
     valores = ([v.strip() for v in args.valores.split(",")] if args.valores
@@ -101,8 +114,21 @@ def main(argv=None):
         params = dict(base)
         params[args.parametro.upper()] = v
         ok, msg, linhas = tenta(caminho, params)
-        marca = "OK  " if ok else "    "
+        # "recusou OUTRO" significa que ESTE valor passou e a barreira mudou de
+        # parâmetro — é progresso, e a próxima rodada ataca o outro.
+        passou = ok or (msg.startswith("recusou")
+                        and not msg.endswith(args.parametro.upper()))
+        marca = "OK  " if ok else ("->  " if passou else "    ")
         print(f'  {marca}{args.parametro}={v!r:16} {msg}')
+        if passou and not ok:
+            seguinte = msg.split()[-1]
+            print(f"\n  {args.parametro}={v!r} passou. Agora a barreira e {seguinte}:")
+            print(f"    python -m coletor.sonda_parametros {args.metodo} "
+                  f"--parametro {seguinte} "
+                  f"--extras {args.parametro.upper()}={v}"
+                  f"{',' + args.extras if args.extras else ''}"
+                  f"{' --sem-datas' if args.sem_datas else ''}")
+            return 0
         if ok:
             aceitos.append((v, linhas))
             if linhas:
