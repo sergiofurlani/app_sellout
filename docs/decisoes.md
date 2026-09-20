@@ -421,6 +421,25 @@ lote anterior; `334096`, o mesmo, com 11. Por isso nenhum desconto aplicado
 sobre a coluna de produção resolveria: seria preciso saber **quando** cada peça
 saiu, e só a transferência tem isso.
 
+### A janela da extração tem que alcançar a planilha (20/09)
+
+A primeira conferência de 9 meses parou em 07/09 e mostrou nove produtos do
+SS27 com ERP zerado — 457 peças, 80% do desvio da coleção. Três eram sapatos e
+três eram tricôs, e eu concluí que produto comprado entraria por outro evento.
+
+**Errado, nas duas pontas.** O sapato também vai da Elena para as lojas, e o
+tricô é produção própria: compra-se o fio, manda-se tecer e depois costurar.
+Não há caminho de entrada alternativo para eles.
+
+O que havia era mais simples: **o `334069` chegou na loja em 12/09 e o `239067`
+em 14/09**, depois do fim da janela. A planilha, atualizada em 18/09, já contava
+essas peças; a extração, não. O zero não era divergência, era recorte.
+
+Por isso `--ate` passa a valer **hoje** por padrão, e uma data anterior à de
+hoje dispara aviso. Numa semana de lançamento chega produto novo toda hora, e
+uma janela curta transforma chegada recente em falsa divergência — o tipo de
+erro que faz alguém desconfiar do número certo.
+
 **A validar quando a extração de 9 meses rodar:** se nenhuma das 199 peças
 aparecer num evento 106 posterior, a regra está confirmada e o corte é
 definitivo — `106` é varejo, todo o resto é atacado. Se aparecer, existe um

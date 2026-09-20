@@ -126,7 +126,8 @@ def main(argv=None):
     p = argparse.ArgumentParser(
         description="Estoque inicial das lojas pela venda entre filiais (evento 106)")
     p.add_argument("--de", type=dia, required=True)
-    p.add_argument("--ate", type=dia, required=True)
+    p.add_argument("--ate", type=dia, default=date.today(),
+                   help="padrao: hoje. Parar antes da data da planilha faz\n                         produto recem-chegado aparecer com zero, e zero\n                         parece divergencia.")
     p.add_argument("-s", "--salvar", help="grava o detalhe por item num CSV")
     p.add_argument("--para-app", metavar="ARQUIVO",
                    help="CSV agregado que o app le: codigo;codigo_cor;cor;quant")

@@ -280,7 +280,8 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Compara o Estoque inicial com o ERP")
     p.add_argument("arquivo")
     p.add_argument("--de", type=dia, required=True)
-    p.add_argument("--ate", type=dia, required=True)
+    p.add_argument("--ate", type=dia, default=date.today(),
+                   help="padrao: hoje. Parar antes da data da planilha faz\n                         produto recem-chegado aparecer com zero, e zero\n                         parece divergencia.")
     p.add_argument("--colecoes", default="AW26,SS27")
     p.add_argument("--saida", default=None)
     p.add_argument("--sem-cache", action="store_true")
@@ -304,6 +305,11 @@ def main(argv=None):
               "--de 2026-01-01 --ate 2026-09-07")
         return 1
     saida = args.saida or str(caminho.with_name(caminho.stem + " - conferencia.xlsx"))
+
+    if args.ate < date.today():
+        print(f"\nAviso: --ate e {args.ate}, e hoje e {date.today()}. Produto que "
+              "chegou\nna loja depois dessa data aparece com ERP = 0 — o que parece "
+              "divergencia\ne nao e. A planilha ja conta essas pecas.")
 
     print(f"\nPuxando o evento {EVENTO} de {args.de} a {args.ate}...")
     saldo, primeira, docs = transferencias(args.de, args.ate)
