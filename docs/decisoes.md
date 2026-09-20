@@ -393,6 +393,31 @@ Doze produtos, **502 peças pelo ERP contra 762 pela regra antiga**. O
 denominador do sellout nasceria 52% maior, e o percentual, um terço menor —
 justamente nos lançamentos, que é onde se decide repetir, aumentar ou cortar.
 
+### Para onde vão as 260 peças de diferença
+
+Medido contra o evento 108 (faturamento de atacado) na mesma semana:
+
+| destino | peças | % da produção |
+|---|---:|---:|
+| lojas (evento 106) | 502 | 66% |
+| atacado (evento 108) | 61 | 8% |
+| ainda na Elena | 199 | 26% |
+
+**O atacado é a menor parte.** A explicação intuitiva — "a produção inclui o
+atacado" — está certa mas é secundária: só 8% saiu para cliente de atacado
+naquela semana. Os outros 26% simplesmente **ainda não tinham sido
+despachados** e estavam parados na Elena.
+
+São dois motivos independentes para a produção não servir como Estoque inicial,
+e o maior deles é de tempo, não de canal. Peça produzida na sexta e despachada
+na terça seguinte não estava em loja nenhuma quando o sellout foi calculado.
+
+Dois produtos confirmam isso ao contrário: `334017` recebeu 50 peças tendo
+produzido 51, mas mandou 20 para o atacado — despachou 19 a mais do que produziu
+na semana, de um lote anterior. `334096`, o mesmo, com 11. **Produção e
+despacho não fecham por semana em nenhum produto**, e é por isso que uma coluna
+nunca pôde substituir a outra, nem com ajuste.
+
 **Como o arquivo chega:** o MN só responde dentro da rede da Egrey, então o app
 na nuvem nunca vai buscá-lo. O coletor puxa lá e o CSV sobe junto com as
 planilhas, num campo opcional da primeira tela.
