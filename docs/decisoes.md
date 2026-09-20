@@ -421,6 +421,28 @@ lote anterior; `334096`, o mesmo, com 11. Por isso nenhum desconto aplicado
 sobre a coluna de produção resolveria: seria preciso saber **quando** cada peça
 saiu, e só a transferência tem isso.
 
+### Nem tudo entra pela Elena: o sapato vem por compra direta
+
+Corrigido pelo negócio em 20/09, depois de duas idas e vindas que vale registrar
+porque o erro foi de método:
+
+- **Tricô é produção própria.** Compra-se o fio, manda-se tecer, depois costurar.
+  Entra pela Elena, evento `106`, como o resto.
+- **Sapato não passa pela Elena.** Entra direto na loja pelo
+  `105 RECEBIMENTO DE COMPRA P.A (LOJAS)` — 922 movimentos em 2026, o maior
+  evento de entrada do ano.
+
+Então o Estoque inicial não é só o `106`. É `106` (Elena → lojas) mais `105`
+(compra direta) mais os ajustes `0` e `2`.
+
+**O obstáculo técnico:** `vendas_consulta_completa` não enxerga evento de
+entrada — a sondagem do `105` voltou vazia por isso, não por falta de
+movimento. O método que serve é `saidas/MovimentacaoPorGrade`, o único que
+devolve `COD_PRODUTO` **e** `COD_COR` do ERP com filtro por evento e filial.
+Ele exige `QUEBRA` com valor de uma lista que o `$metadata` não publica — não há
+um `EnumType` sequer no arquivo inteiro. Daí `coletor/sonda_parametros.py`, que
+tenta os valores plausíveis e diz qual passa.
+
 ### A janela da extração tem que alcançar a planilha (20/09)
 
 A primeira conferência de 9 meses parou em 07/09 e mostrou nove produtos do
