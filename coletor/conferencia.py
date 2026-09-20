@@ -107,6 +107,20 @@ def divide(codigo, linhas_do_codigo, saldo):
     if len(linhas_do_codigo) == 1:
         return {linhas_do_codigo[0][0]: (total, "")}
 
+    # Código em mais de uma linha SEM vermelho em nenhuma: é o mesmo produto
+    # em dois blocos de coleção (o `330043 CALÇA MB NEW` está em AW26 e SS27).
+    # O ERP tem um único fluxo de transferências para esse código e não sabe a
+    # qual coleção cada peça pertence — a coleção é recorte nosso, não dele.
+    # Dividir seria inventar; atribuir tudo à última linha, que é o que a regra
+    # do "resto" fazia, faz a outra aparecer zerada como se faltasse peça.
+    sem_vermelho = [l for l, c in linhas_do_codigo if not c or eh_resto(c)]
+    if len(sem_vermelho) > 1:
+        blocos = len(linhas_do_codigo)
+        obs = (f"codigo em {blocos} linhas sem vermelho (coleções diferentes); "
+               f"o ERP nao distingue coleção — total do codigo: {total:,.0f}")
+        return {l: (total if l == sem_vermelho[0] else 0, obs)
+                for l, _c in linhas_do_codigo}
+
     disponiveis = {nome for _cc, nome in porcor}
     resultado, usadas = {}, set()
     resto_em = None

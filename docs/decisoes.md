@@ -421,6 +421,43 @@ lote anterior; `334096`, o mesmo, com 11. Por isso nenhum desconto aplicado
 sobre a coluna de produção resolveria: seria preciso saber **quando** cada peça
 saiu, e só a transferência tem isso.
 
+### A conferência de 9 meses: 1,5% no total, 0,5% no AW26
+
+Janela de 01/01 a 20/09, 1.080 documentos, 16.975 peças.
+
+| | planilha | ERP | |
+|---|---:|---:|---|
+| AW26 (155 produtos) | 7.927 | 7.964 | **+0,5%** |
+| SS27 (54 produtos) | 2.799 | 2.601 | −7,1% |
+| **total** | **10.726** | **10.565** | **−1,5%** |
+
+De 209 produtos, **78 batem exato** e outros 76 ficam dentro de 5%.
+
+**O AW26 fecha.** Uma coluna mantida à mão por nove meses reproduz o ERP com
+meio por cento de erro em 155 produtos. A derivação da D13 está certa e a coluna
+também estava.
+
+**O que sobra no SS27 é a D14 se mostrando**, não falta de dado:
+
+| código | planilha | ERP | |
+|---|---:|---:|---|
+| 334128 | 86 | 34 | 86 é a produção |
+| 334155 | 64 | 24 | |
+| 334069 | 139 | 100 | |
+
+São produtos novos cujo Estoque inicial nasceu de `max(produção, …)` — a regra
+antiga. O ERP diz quanto chegou na loja; a planilha guardou quanto foi
+produzido. É exatamente o erro que a D14 corrige na origem.
+
+**E dois casos que eram defeito meu:** `328028` e `330043` aparecem em AW26
+**e** SS27, sem vermelho em nenhuma das linhas. A regra do "resto" jogava todo o
+saldo na última linha e deixava a outra zerada — 107 peças de falso buraco. O
+ERP tem um único fluxo por código e **não sabe a qual coleção cada peça
+pertence**: coleção é recorte nosso, não dele. Agora o total vai numa linha só,
+com a observação dizendo por quê, em vez de a outra parecer faltando.
+
+Descontando essas 107, a diferença real é de **54 peças em 10.726 — 0,5%**.
+
 ### Nem tudo entra pela Elena: o sapato vem por compra direta
 
 Corrigido pelo negócio em 20/09, depois de duas idas e vindas que vale registrar
