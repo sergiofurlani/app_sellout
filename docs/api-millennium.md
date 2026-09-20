@@ -381,6 +381,21 @@ de-para `COR → COD_COR` a partir do `Detalhado2_Data`, que devolve os dois.
 primeiros tragam a grade inteira e o segundo o total. Confirmar na primeira
 chamada; muda como a quantidade é lida.
 
+### `eventos/ListaEventosPorTipo` é o catálogo — o outro não é
+
+Use **este** para saber quais eventos existem. Responde sem parâmetro e devolve
+entrada **e** saída, com `EVENTO`, `CODIGO`, `DESCRICAO`, `TIPO_ENTRADA`,
+`TIPO_SAIDA` e `GRUPO_EVENTO`. Foi ele que preencheu `09`, `00027` e `00206`
+para os eventos de venda, que o outro método não tem.
+
+`Eventos_InfluenciaEstoque` promete pelo nome o que não entrega: "influência de
+estoque" sugere tudo que mexe no saldo, e venda mexe. Mas ele devolve 20 linhas,
+**todas de entrada**. Tratar o nome como contrato levou a concluir que o evento
+de venda entre filiais "não existe", quando o que não existia era na lista.
+
+Serve para uma coisa: é a lista curta dos eventos de entrada, útil para
+restringir candidatos. Não serve como catálogo.
+
 ### Os eventos de entrada — `eventos/Eventos_InfluenciaEstoque`
 
 Sem parâmetro nenhum. Devolve `EVENTO` (interno), `CODIGO` (do ERP) e
@@ -474,9 +489,27 @@ Dois usos:
    ainda é preciso saber se essa filial é origem ou destino; é o que o
    `Transferencia_Filiais` dá de graça com `DESC_FILIALO`/`DESC_FILIALD`.
 
-Provável divisão: `Transferencia_Filiais` para a direção do fluxo,
-`MovimentacaoPorGrade` para a chave de cor. `coletor/explora_entradas.py`
-chama os dois lado a lado.
+**Os dois são relatórios e recusaram a chamada simples** (19/09):
+
+```
+Transferencia_Filiais : value of parameter LAYOUT, not found in list
+MovimentacaoPorGrade  : value of parameter QUEBRA, not found in list
+```
+
+Erro bom: o caminho da URL está certo — o servidor chegou a executar a macro e
+parou na validação do parâmetro. `LAYOUT` e `QUEBRA` são obrigatórios e só
+aceitam valores de uma lista que o `$metadata` **não publica**, e nenhum método
+do tipo `ListaLayouts` existe. Descobrir esses valores é tentativa e erro.
+
+Por isso a sondagem passou a usar `movimentacao/vendas_consulta_completa`, que
+já está provado e devolve os itens com produto e cor, e
+`movimentacao/Lista_Por_Evento`, que traz `FILIAL_DESTINO` no documento. Os
+relatórios ficam para quando fizerem falta.
+
+**Regra geral que sai daí:** método de relatório (`LAYOUT`, `QUEBRA`, `ORDEM`,
+`IMPRESSAO`) é feito para a tela do ERP e cobra parâmetros de apresentação.
+Método de consulta (`DATAI`, `DATAF`, `EVENTO`, `FILIAL`) é feito para ser
+chamado. Preferir o segundo sempre que existir.
 
 ## O que ainda falta descobrir
 

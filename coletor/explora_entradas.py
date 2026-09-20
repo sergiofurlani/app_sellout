@@ -1,24 +1,23 @@
 """Descobre por qual evento a peça entra no estoque das lojas.
 
 A tese (D13): o Estoque inicial é a transferência da ELENA ES para Jardins e
-Iguatemi. A lista de eventos de entrada dá cinco candidatos e nenhuma certeza —
-só a chamada decide qual carrega o fluxo de verdade.
+Iguatemi. Falta saber por qual evento ela é registrada.
 
-    python -m coletor.explora_entradas --de 2026-09-01 --ate 2026-09-17
+    python -m coletor.explora_entradas --de 2026-08-31 --ate 2026-09-07
 
-O script chama três métodos para o mesmo período e imprima o que cada um vê:
+Três passos, todos por métodos já provados nesta base:
 
-  1. eventos/Eventos_InfluenciaEstoque    a lista, para ter código e descrição
-  2. transferencias/Transferencia_Filiais origem -> destino, por produto
-  3. saidas/MovimentacaoPorGrade          COD_PRODUTO + COD_COR + evento
+  1. `eventos/ListaEventosPorTipo` — o catálogo **completo**, entrada e saída,
+     com os dois códigos. É o que responde "quais eventos existem".
+  2. Escolhe os candidatos pela descrição (transferência, filial, Elena) e
+     pelos recebimentos de produto acabado.
+  3. Sonda cada candidato com `movimentacao/vendas_consulta_completa`, o mesmo
+     método da extração de vendas, que devolve os itens com produto e cor.
 
-O que procurar na saída:
-
-  - No (2): linhas com ELENA ES na origem e IGUATEMI/EGREY JDS no destino.
-    Se aparecerem, a tese está certa e o método serve.
-  - No (3): qual DESC_EVENTO acompanha essas peças.
-  - Se (2) vier vazio, o fluxo não é registrado como transferência — aí é
-    venda com evento próprio, e o caminho é vendas_consulta_completa.
+Por que não `Transferencia_Filiais` nem `MovimentacaoPorGrade`: os dois existem
+e o caminho da URL está certo — o servidor chegou a executar a macro — mas são
+**relatórios**, e exigem valor válido em `LAYOUT` e `QUEBRA`, de uma lista que o
+`$metadata` não publica. Ficam para depois, se a sondagem não bastar.
 
 Nada aqui grava nada. É leitura.
 """
@@ -26,25 +25,22 @@ Nada aqui grava nada. É leitura.
 from __future__ import annotations
 
 import argparse
+import re
 from collections import defaultdict
 from datetime import date
 
 from . import mn
 
-EVENTOS = "/api/millenium/eventos/Eventos_InfluenciaEstoque"
-TRANSFERENCIAS = "/api/millenium/transferencias/Transferencia_Filiais"
-POR_GRADE = "/api/millenium/saidas/MovimentacaoPorGrade"
+LISTA_POR_EVENTO = "/api/millenium/movimentacao/Lista_Por_Evento"
 
-# Lidas na chamada de 18/09. Servem de referência; a lista viva manda.
-CANDIDATOS = {
-    105: "RECEBIMENTO DE COMPRA P.A (LOJAS)",
-    104: "RECEBIMENTO DE COMPRA ELENATIMES ES",
-    13: "RECEBIMENTO DE TRANSFERENCIA MATRIZ",
-    103: "RECEBIMENTO DE COMPRA P.A",
-    115: "RECEBIMENTO ELENATIMES (ATACADO)",
-}
+# Eventos de entrada que já pareciam candidatos na primeira leitura.
+CANDIDATOS_FIXOS = {105, 104, 13, 103, 115}
+
+# Descrições que cheiram a movimentação entre filiais, dos dois lados.
+PADRAO = re.compile(r"TRANSFER|FILIA|ELENA|ELENATIMES|REMESSA|ENVIO|MATRIZ", re.I)
 
 LOJAS = ("IGUATEMI", "JDS", "JARDINS")
+ORIGENS = ("ELENA", "ELENATIMES")
 
 # A aba Producao do mesmo export (31/08 a 07/09), para comparar.
 #
@@ -67,99 +63,147 @@ def dia(texto: str) -> date:
 
 
 def titulo(texto: str) -> None:
-    print(f"\n{'=' * 70}\n{texto}\n{'=' * 70}")
+    print(f"\n{'=' * 72}\n{texto}\n{'=' * 72}")
 
 
-def tenta(rotulo: str, caminho: str, **params):
-    """Chama e devolve as linhas. Erro não derruba o script — o resto segue."""
-    print(f"\n  GET {caminho}")
-    print(f"      {params}")
+def campo(d: dict, *nomes):
+    """A API alterna maiúscula e minúscula conforme o método. Aceita os dois."""
+    for n in nomes:
+        for chave in (n, n.lower(), n.upper()):
+            if chave in d:
+                return d[chave]
+    return None
+
+
+def catalogo() -> list[dict]:
+    titulo("1. Catálogo de eventos — ListaEventosPorTipo")
     try:
-        linhas = mn.valores(mn.requisita(caminho, **params))
+        linhas = mn.catalogo_eventos()
     except mn.Falha as e:
-        print(f"      FALHOU: {e}")
+        print(f"  FALHOU: {e}")
         return []
-    print(f"      {len(linhas)} linha(s)")
+
+    print(f"  {len(linhas)} evento(s)\n")
+    print(f'  {"evento":>7} {"codigo":8} {"E":1} {"S":1}  descricao')
+    print("  " + "-" * 66)
+    for ev in sorted(linhas, key=lambda x: campo(x, "evento") or 0):
+        interno = campo(ev, "evento")
+        cod = str(campo(ev, "codigo") or "")
+        desc = str(campo(ev, "descricao") or "")
+        e = "E" if campo(ev, "tipo_entrada") else " "
+        s = "S" if campo(ev, "tipo_saida") else " "
+        marca = ""
+        if PADRAO.search(desc):
+            marca = "  <-- entre filiais?"
+        elif interno in CANDIDATOS_FIXOS:
+            marca = "  <-- candidato"
+        print(f'  {interno:>7} {cod:8} {e:1} {s:1}  {desc}{marca}')
     return linhas
 
 
-def lista_eventos():
-    titulo("1. Eventos que influenciam estoque")
-    linhas = tenta("eventos", EVENTOS)
-    if not linhas:
-        return
-    print(f'\n  {"evento":>7} {"codigo":8} descricao')
-    print("  " + "-" * 60)
-    for ev in sorted(linhas, key=lambda x: x.get("evento", 0)):
-        marca = " <-- candidato" if ev.get("evento") in CANDIDATOS else ""
-        print(f'  {ev.get("evento", ""):>7} {str(ev.get("codigo", "")):8} '
-              f'{ev.get("descricao", "")}{marca}')
+def escolhe(linhas, manual) -> list[tuple[int, str]]:
+    if manual:
+        pedidos = {int(t) for t in manual.split(",") if t.strip()}
+        return [(campo(e, "evento"), str(campo(e, "descricao") or ""))
+                for e in linhas if campo(e, "evento") in pedidos] or \
+               [(n, "(fora do catalogo)") for n in sorted(pedidos)]
+
+    escolhidos = {}
+    for ev in linhas:
+        interno = campo(ev, "evento")
+        desc = str(campo(ev, "descricao") or "")
+        if interno is None:
+            continue
+        if PADRAO.search(desc) or interno in CANDIDATOS_FIXOS:
+            escolhidos[interno] = desc
+    return sorted(escolhidos.items())
 
 
-def transferencias(de: date, ate: date):
-    titulo("2. Transferencia_Filiais — quem manda para quem")
-    linhas = tenta("transferencias", TRANSFERENCIAS,
-                   **{"$top": 5000, "DATAI": de.isoformat(), "DATAF": ate.isoformat()})
-    if not linhas:
-        print("\n  Vazio. Ou nao houve transferencia no periodo, ou o fluxo nao")
-        print("  e registrado como transferencia — nesse caso e venda com evento.")
-        return
-
-    print("\n  Campos da primeira linha (para conferir o formato de QUANTS):")
-    for k, v in list(linhas[0].items())[:30]:
-        print(f'    {k:16} {str(v)[:50]}')
-
-    fluxo = defaultdict(lambda: {"linhas": 0, "qtde": 0.0, "produtos": set()})
-    for l in linhas:
-        origem = (l.get("desc_filialo") or l.get("DESC_FILIALO") or "?").strip()
-        destino = (l.get("desc_filiald") or l.get("DESC_FILIALD") or "?").strip()
-        f = fluxo[(origem, destino)]
-        f["linhas"] += 1
-        f["qtde"] += float(l.get("quants_s") or l.get("QUANTS_S") or 0)
-        f["produtos"].add(str(l.get("cod_produto") or l.get("COD_PRODUTO") or ""))
-
-    print(f'\n  {"origem":22} -> {"destino":22} {"linhas":>7} {"qtde":>9} {"prod":>6}')
-    print("  " + "-" * 76)
-    for (o, d), f in sorted(fluxo.items(), key=lambda x: -x[1]["qtde"]):
-        alvo = " *" if any(s in d.upper() for s in LOJAS) else ""
-        print(f'  {o[:22]:22} -> {d[:22]:22} {f["linhas"]:>7} '
-              f'{f["qtde"]:>9,.0f} {len(f["produtos"]):>6}{alvo}')
-    print("\n  As linhas com * terminam numa loja: sao candidatas a Estoque inicial.")
-
-
-def por_grade(de: date, ate: date):
-    titulo("3. MovimentacaoPorGrade — COD_PRODUTO + COD_COR + evento")
-    linhas = tenta("por grade", POR_GRADE,
-                   **{"$top": 5000, "DATAI": de.isoformat(), "DATAF": ate.isoformat()})
-    if not linhas:
-        print("\n  Vazio ou recusado. Se recusou, o grupo da URL pode nao ser")
-        print("  'saidas' — conferir no $metadata o prefixo do ReturnType.")
+def sonda(candidatos, de: date, ate: date):
+    titulo("2. Sondagem — vendas_consulta_completa por evento")
+    if not candidatos:
+        print("  Nenhum candidato. Use --eventos para forcar.")
         return
 
-    print("\n  Campos da primeira linha:")
-    for k, v in list(linhas[0].items())[:30]:
-        print(f'    {k:16} {str(v)[:50]}')
+    print(f"  {len(candidatos)} evento(s) x {(ate - de).days + 1} dia(s)\n")
+    ag = defaultdict(lambda: {"docs": 0, "itens": 0, "qtde": 0.0,
+                              "produtos": set(), "destinos": set()})
+    exemplo = None
 
-    ag = defaultdict(lambda: {"linhas": 0, "qtde": 0.0, "cores": set(), "filiais": set()})
-    for l in linhas:
-        ev = (l.get("desc_evento") or l.get("DESC_EVENTO") or "?").strip()
-        a = ag[ev]
-        a["linhas"] += 1
-        a["qtde"] += float(l.get("qtde") or l.get("QTDE") or 0)
-        cor = l.get("cod_cor") or l.get("COD_COR")
-        if cor:
-            a["cores"].add(str(cor).strip())
-        a["filiais"].add((l.get("cod_filial") or l.get("COD_FILIAL") or "?").strip())
+    for interno, desc in candidatos:
+        for d in mn.dias(de, ate):
+            try:
+                docs = mn.documentos_do_dia(d, eventos=(interno,))
+            except mn.Falha as e:
+                print(f"  evento {interno} em {d}: FALHOU ({e})")
+                break
+            for doc in docs:
+                if exemplo is None:
+                    exemplo = doc
+                filial = str(campo(doc, "cod_filial") or "?").strip()
+                a = ag[(interno, desc, filial)]
+                a["docs"] += 1
+                destino = campo(doc, "filial_destino", "cod_filial_destino",
+                                "desc_filial_destino")
+                if destino:
+                    a["destinos"].add(str(destino).strip())
+                for item in doc.get("itens") or []:
+                    q = item.get("quant") or 0
+                    if q <= 0:
+                        continue
+                    a["itens"] += 1
+                    a["qtde"] += q
+                    a["produtos"].add(str(item.get("cod_produto") or "").strip())
 
-    print(f'\n  {"evento":42} {"linhas":>7} {"qtde":>9} {"cores":>6}  filiais')
-    print("  " + "-" * 86)
-    for ev, a in sorted(ag.items(), key=lambda x: -x[1]["qtde"]):
-        print(f'  {ev[:42]:42} {a["linhas"]:>7} {a["qtde"]:>9,.0f} '
-              f'{len(a["cores"]):>6}  {",".join(sorted(a["filiais"]))[:30]}')
+    if not ag:
+        print("  Nenhum documento em nenhum candidato.")
+        print("  A movimentacao nao passa por vendas_consulta_completa:")
+        print("  o caminho passa a ser Lista_Por_Evento ou os relatorios.")
+        return
 
-    com_cor = sum(len(a["cores"]) for a in ag.values())
-    print(f"\n  COD_COR preenchido em {com_cor} combinacao(oes) distintas.")
-    print("  Se vier vazio, o de-para de cor tem que sair do Detalhado2_Data.")
+    print(f'  {"evento":>6} {"filial":12} {"docs":>5} {"itens":>6} {"qtde":>8} '
+          f'{"prod":>5}  descricao')
+    print("  " + "-" * 82)
+    for (interno, desc, filial), a in sorted(ag.items(), key=lambda x: -x[1]["qtde"]):
+        alvo = " *" if any(s in filial.upper() for s in LOJAS) else ""
+        print(f'  {interno:>6} {filial:12} {a["docs"]:>5} {a["itens"]:>6} '
+              f'{a["qtde"]:>8,.0f} {len(a["produtos"]):>5}  {desc[:28]}{alvo}')
+        if a["destinos"]:
+            print(f'         destinos: {", ".join(sorted(a["destinos"]))[:60]}')
+
+    if exemplo:
+        print("\n  Campos de um documento (para achar a filial de destino):")
+        for k, v in list(exemplo.items())[:28]:
+            if k == "itens":
+                v = f"[{len(exemplo['itens'])} itens]"
+            print(f'    {k:22} {str(v)[:44]}')
+
+
+def por_evento(candidatos, de: date, ate: date):
+    """Plano B: Lista_Por_Evento traz FILIAL_DESTINO no documento."""
+    titulo("3. Lista_Por_Evento — documento com filial de destino")
+    for interno, desc in candidatos[:6]:
+        try:
+            linhas = mn.valores(mn.requisita(
+                LISTA_POR_EVENTO,
+                **{"$top": 2000, "EVENTO": interno,
+                   "DATAI": de.isoformat(), "DATAF": ate.isoformat()}))
+        except mn.Falha as e:
+            print(f"  evento {interno:>4} ({desc[:30]}): {str(e)[:110]}")
+            continue
+        if not linhas:
+            print(f"  evento {interno:>4} ({desc[:30]}): vazio")
+            continue
+        print(f"\n  evento {interno} — {desc}: {len(linhas)} documento(s)")
+        fluxo = defaultdict(lambda: {"docs": 0, "valor": 0.0})
+        for l in linhas:
+            o = str(campo(l, "filial") or "?").strip()
+            d = str(campo(l, "filial_destino") or "").strip() or "—"
+            f = fluxo[(o, d)]
+            f["docs"] += 1
+            f["valor"] += float(campo(l, "valor_final") or 0)
+        for (o, d), f in sorted(fluxo.items(), key=lambda x: -x[1]["valor"]):
+            print(f'    {o:14} -> {d:14} {f["docs"]:>5} doc  R$ {f["valor"]:>12,.2f}')
 
 
 def main(argv=None):
@@ -167,16 +211,26 @@ def main(argv=None):
         description="Descobre por qual evento a peca entra no estoque das lojas")
     p.add_argument("--de", type=dia, required=True)
     p.add_argument("--ate", type=dia, required=True)
-    p.add_argument("--pular-eventos", action="store_true")
+    p.add_argument("--eventos", default="",
+                   help="internos separados por virgula; vazio escolhe pela descricao")
+    p.add_argument("--so-catalogo", action="store_true")
+    p.add_argument("--sem-cache", action="store_true")
     args = p.parse_args(argv)
 
-    if not args.pular_eventos:
-        lista_eventos()
-    transferencias(args.de, args.ate)
-    por_grade(args.de, args.ate)
+    mn.USAR_CACHE = not args.sem_cache
 
-    titulo("O que fazer com isso")
+    linhas = catalogo()
+    if args.so_catalogo:
+        return 0
+
+    candidatos = escolhe(linhas, args.eventos)
+    print(f"\nCandidatos: {', '.join(str(c[0]) for c in candidatos) or '(nenhum)'}")
+
+    sonda(candidatos, args.de, args.ate)
+    por_evento(candidatos, args.de, args.ate)
+
     r = REFERENCIA_PRODUCAO
+    titulo("O que fazer com isso")
     print(f"""
   Referencia da aba Producao no mesmo periodo (31/08 a 07/09):
 
@@ -188,15 +242,10 @@ def main(argv=None):
   transferencia ELENA ES -> lojas tem que ser um PEDACO dessas {r['pecas']}
   pecas, nunca mais que isso. Se der mais, a leitura esta errada.
 
-  O que a saida responde:
-
-  - Se (2) mostrar ELENA ES -> IGUATEMI / EGREY JDS com quantidade, a tese da
-    D13 esta certa e o Estoque inicial vira dado derivado.
-  - Se (3) trouxer COD_COR preenchido, o saldo de abertura sai por cor direto,
-    sem de-para.
-  - Se (2) vier vazio e (3) mostrar um evento tipo "VENDA ENTRE FILIAIS", o
-    caminho e vendas_consulta_completa com aquele EVENTO — e ele tem que ser
-    excluido da agregacao de venda, senao a receita de varejo infla.
+  Procure na secao 2 ou 3 um evento que mova peca de ELENA ES para
+  IGUATEMI ou EGREY JDS (marcado com *). O interno dele vai para a
+  tabela mn.EVENTOS como entrada de estoque — e precisa ficar FORA da
+  agregacao de venda, senao a receita de varejo infla.
 """)
     return 0
 
