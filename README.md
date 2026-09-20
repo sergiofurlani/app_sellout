@@ -84,6 +84,13 @@ Testes:
 python -m pytest
 ```
 
+Carga única do histórico (branch `banco`, com `DATABASE_URL` definida):
+
+```bash
+python -m sellout.db.historico "sellout geral.xlsx" --planilha geral
+python -m sellout.db.historico "Sellout Clássicos.xlsx" --planilha classicos
+```
+
 ## Deploy
 
 Feito para Railway (Nixpacks). O start command está em `railway.json`; o healthcheck responde
@@ -122,4 +129,5 @@ sellout/db/conexao.py      conexão com o Postgres
 sellout/db/migracoes.py    migrações versionadas
 sellout/db/migracoes/      os .sql, aplicados em ordem numérica
 sellout/db/ingestao.py     grava a rodada como snapshot, em paralelo ao Excel
+sellout/db/historico.py    carrega as colunas antigas de sellout para o banco
 ```
