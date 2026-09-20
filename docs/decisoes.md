@@ -229,9 +229,37 @@ Cinco produtos aparecem só na transferência e quatro só na produção — tod
 casos de defasagem, nenhum de contradição.
 
 **Conclusão:** somar a aba Producao ao Estoque inicial infla o denominador do
-sellout em cerca de 56% no total, e erra de forma grosseira em produtos que
-foram produzidos para o atacado ou ainda não despacharam. `coletor/estoque_inicial.py`
-extrai o número certo.
+sellout. `coletor/estoque_inicial.py` extrai o número certo.
+
+### Quanto isso custa, produto a produto
+
+Simulação sobre o arquivo de 18/09, aplicando a D6 (`Estoque inicial =
+max(produção, estoque + vendas)`) contra a mesma regra com a transferência no
+lugar da produção. Só produtos com estoque, como manda a D5:
+
+| código | estoque | vendas | produção | transferido | EI hoje | EI certo | erro |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 334127 | 2 | 1 | 31 | 10 | 31 | 10 | **+210%** |
+| 334128 | 11 | 2 | 86 | 34 | 86 | 34 | **+153%** |
+| 334066 | 40 | 0 | 111 | 48 | 111 | 48 | **+131%** |
+| 334044 | 30 | 4 | 106 | 52 | 106 | 52 | **+104%** |
+| 334037 | 15 | 0 | 50 | 29 | 50 | 29 | +72% |
+| 239051 | 43 | 1 | 80 | 48 | 80 | 48 | +67% |
+| 239028 | 40 | 6 | 65 | 56 | 65 | 56 | +16% |
+| **total** | | | | | **1.124** | **864** | **+30%** |
+
+Trinta por cento a mais no denominador. Como o sellout é vendas dividido por
+Estoque inicial, o percentual sai cerca de **23% abaixo do real** no conjunto —
+e, no `334127`, sai três vezes menor: 3% quando é 10%.
+
+E são justamente os produtos da coleção nova, que é onde a decisão de repetir,
+aumentar ou cortar é tomada. O erro está concentrado exatamente onde o número é
+usado para decidir.
+
+Um caso que a regra atual já protegia, e vale registrar: o `334059` teve 56
+peças produzidas e nenhuma transferida, mas também nenhum estoque na loja — a
+D5 o deixou de fora por isso. A regra "produção só entra se houver estoque" era
+um remendo que, sem saber, corrigia parte deste mesmo problema.
 
 ### O que continua em aberto
 
