@@ -95,13 +95,27 @@ def _auth() -> str:
     return "Basic " + base64.b64encode(f"{USUARIO}:{SENHA}".encode()).decode()
 
 
+POST = False   # o namespace MILLENIUM_ECO é chamado com POST de corpo vazio
+
+
 def requisita(caminho: str, **params) -> dict:
-    """GET com retentativa. 4xx não é retentado — é erro de chamada, não de rede."""
+    """GET (ou POST, se `POST`) com retentativa. 4xx não é retentado — é erro
+    de chamada, não de rede.
+
+    O `POST` existe porque a documentação da MN chama o namespace de
+    integração com `--data ''`, que em curl vira POST. Os parâmetros continuam
+    na query string dos dois jeitos; o que muda é o verbo, e um servidor que
+    espera POST responde a GET de um jeito que não parece erro de verbo.
+    """
     params.setdefault("$format", "json")
     url = f"{BASE}{caminho}?{urllib.parse.urlencode(params)}"
     ultimo = None
     for tentativa in range(1, TENTATIVAS + 1):
-        req = urllib.request.Request(url, headers={"Authorization": _auth()})
+        cabecalhos = {"Authorization": _auth()}
+        if POST:
+            cabecalhos["Content-Type"] = "application/json"
+        req = urllib.request.Request(
+            url, headers=cabecalhos, data=b"" if POST else None)
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 texto = r.read().decode("utf-8", errors="replace")

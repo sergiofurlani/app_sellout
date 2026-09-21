@@ -24,7 +24,7 @@ from collections import Counter
 import openpyxl
 
 from ..core.leitura import ABAS_TRABALHO, blocos_de, linhas_de_produto, num, texto, vermelho
-from .conexao import conectar, disponivel
+from .conexao import conectar, por_que_nao
 
 VAZIOS = {"-", "--", "", "#DIV/0!", "#N/D", "#N/A", "#REF!", "#VALUE!"}
 
@@ -185,8 +185,9 @@ def main(argv=None):
 
     if args.so_ler:
         return 0
-    if not disponivel():
-        print("\n  DATABASE_URL nao definida — nao gravei.")
+    motivo = por_que_nao()
+    if motivo:
+        print(f"\n  Nao gravei: {motivo}")
         return 1
     print(f"\n  gravados: {gravar(registros)}")
     with conectar() as c, c.cursor() as cur:

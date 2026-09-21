@@ -17,11 +17,24 @@ Voltar a este momento: `git checkout v1.0` e um deploy. Um comando.
 
 ## Etapa 1 · Banco e ingestão
 
-- Postgres no mesmo projeto Railway
-- Migrações versionadas — o banco muda por arquivo no repositório, nunca na mão
+- ~~Postgres no mesmo projeto Railway~~ — feito
+- ~~Migrações versionadas~~ — feito; aplicadas em 21/09, pela máquina do Sergio
+  através de um proxy TCP temporário. **O deploy não aplica migração**: o start
+  command só sobe o uvicorn. Enquanto isso não mudar, migração nova exige
+  alguém rodar `python -m sellout.db.migracoes` à mão.
 - Adaptador de upload: as mesmas planilhas viram snapshot no banco
-- Carga do histórico: as 237 colunas de sellout viram linhas
-- Congelamento do saldo de abertura a partir do Estoque inicial de hoje (D10)
+- ~~Carga do histórico~~ — feito em 21/09: **12.211 registros, 175 semanas, de
+  04/12/2022 a 09/09/2026** (11.694 da geral, 517 dos Clássicos). Quatro colunas
+  com ano digitado errado foram corrigidas na leitura.
+  **Ficaram de fora 14 códigos** que ocupam duas linhas sem vermelho (`330043`,
+  `328028`, `329011`, `212006`…): o carregador não sabia repartir e preferiu não
+  carregar. O `produtos-erp.csv` hoje desempata isso (D11) — dá para recuperá-los
+  numa segunda passada, sem refazer a carga.
+- Congelamento do saldo de abertura a partir do Estoque inicial de hoje (D10).
+  A conferência de 21/09 mostra que AW26 já pode vir do sistema (97% das linhas
+  dentro de ±10 peças) e que no SS27, quando planilha e ERP discordam, quem
+  costuma estar certo é o ERP — a planilha guardou produção, não chegada (D14).
+  As duas colunas convivem no começo para decidir isso por dado.
 
 Ao final desta etapa o banco existe e é alimentado, mas **nada muda para você** —
 a rodada semanal segue igual. É de propósito: se algo estiver errado, dá para

@@ -37,8 +37,22 @@ from sellout.core.leitura import (COLUNAS_PRODUTOS, blocos_de, colunas_da_fonte,
                                   linhas_de_produto, mapa_colunas, norm_codigo, texto, vermelho)
 
 from . import mn
+# Uma definicao so de "ultimo dia fechado": a conferencia e o Estoque inicial
+# precisam da MESMA janela, senao uma acusa divergencia que a outra criou.
+from .estoque_inicial import ontem
 
-EVENTO = 106
+# Os eventos que movem peça entre a Elena e as lojas.
+#
+#   106  VENDAS ENTRE FILIAIS      — o caminho normal, nos dois sentidos
+#   207  DEVOLUÇÃO PARA ELENATIMES — criado em setembro/2026 para a loja
+#                                    devolver peça que não vendeu
+#
+# O 207 **não é venda negativa**, embora o export de vendas do ERP o traga
+# assim. A peça nunca foi vendida: ela saiu da loja e voltou para a Elena.
+# Contá-lo como venda encolheria o numerador e deixaria o denominador
+# intacto — erro dos dois lados. Aqui ele abate o Estoque inicial, que é o
+# que de fato aconteceu. Decidido pelo negócio em 21/09.
+EVENTOS = (106, 207)
 MATRIZ = ("ELENA ES", "ELENA SP", "ELENATIMES")
 LOJAS = {"EGREY JDS", "IGUATEMI"}
 
@@ -65,7 +79,7 @@ def transferencias(de: date, ate: date):
     """
     saldo = defaultdict(float)
     primeira: dict[str, date] = {}
-    docs = mn.documentos_do_periodo(de, ate, (EVENTO,))
+    docs = mn.documentos_do_periodo(de, ate, EVENTOS)
     for doc in docs:
         origem = (doc.get("cod_filial") or "").strip()
         destino = (doc.get("cod_cliente") or "").strip()
@@ -449,8 +463,11 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Compara o Estoque inicial com o ERP")
     p.add_argument("arquivo")
     p.add_argument("--de", type=dia, required=True)
-    p.add_argument("--ate", type=dia, default=date.today(),
-                   help="padrao: hoje. Parar antes da data da planilha faz\n                         produto recem-chegado aparecer com zero, e zero\n                         parece divergencia.")
+    p.add_argument("--ate", type=dia, default=ontem(),
+                   help="padrao: ontem, o ultimo dia fechado. Parar antes da\n"
+                        "                         data da planilha faz produto recem-chegado\n"
+                        "                         aparecer com zero, e zero parece divergencia;\n"
+                        "                         incluir hoje traz um dia pela metade.")
     p.add_argument("--colecoes", default="AW26,SS27")
     p.add_argument("--saida", default=None)
     p.add_argument("--sem-cache", action="store_true")
@@ -478,12 +495,16 @@ def main(argv=None):
         return 1
     saida = args.saida or str(caminho.with_name(caminho.stem + " - conferencia.xlsx"))
 
-    if args.ate < date.today():
-        print(f"\nAviso: --ate e {args.ate}, e hoje e {date.today()}. Produto que "
-              "chegou\nna loja depois dessa data aparece com ERP = 0 — o que parece "
-              "divergencia\ne nao e. A planilha ja conta essas pecas.")
+    # O aviso é sobre janela curta, e por isso compara com **ontem**, não com
+    # hoje: hoje é um dia pela metade e nunca deve entrar na conta. Comparando
+    # com hoje, a rodada correta — a que vai até ontem — avisava sempre, e
+    # aviso que aparece sempre deixa de ser lido.
+    if args.ate < ontem():
+        print(f"\nAviso: --ate e {args.ate}, e o ultimo dia fechado e {ontem()}. "
+              "Produto\nque chegou na loja depois dessa data aparece com ERP = 0 — "
+              "o que parece\ndivergencia e nao e. A planilha ja conta essas pecas.")
 
-    print(f"\nPuxando o evento {EVENTO} de {args.de} a {args.ate}...")
+    print(f"\nPuxando os eventos {', '.join(map(str, EVENTOS))} de {args.de} a {args.ate}...")
     saldo, primeira, docs = transferencias(args.de, args.ate)
     pecas = sum(v for v in saldo.values() if v > 0)
     print(f"  {docs} documento(s), {len(saldo)} combinacao(oes) produto+cor, "

@@ -32,21 +32,54 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from . import mn
 
-EVENTO = 106
+# Os eventos que movem peça entre a Elena e as lojas.
+#
+#   106  VENDAS ENTRE FILIAIS      — o caminho normal, nos dois sentidos
+#   207  DEVOLUÇÃO PARA ELENATIMES — criado em setembro/2026 para a loja
+#                                    devolver peça que não vendeu
+#
+# O 207 **não é venda negativa**, embora o export de vendas do ERP o traga
+# assim. A peça nunca foi vendida: ela saiu da loja e voltou para a Elena.
+# Contá-lo como venda encolheria o numerador e deixaria o denominador
+# intacto — erro dos dois lados. Aqui ele abate o Estoque inicial, que é o
+# que de fato aconteceu. Decidido pelo negócio em 21/09.
+EVENTOS = (106, 207)
 
 MATRIZ = ("ELENA ES", "ELENA SP", "ELENATIMES")
 LOJAS = ("EGREY JDS", "IGUATEMI")
 
-# Peça acabada da aba Producao no mesmo período, como teto de sanidade.
-TETO_PRODUCAO = 826
+# Peça acabada por semana na aba Producao, como ordem de grandeza.
+#
+# Era um número fixo — 826 — comparado direto com o líquido do período, e
+# nasceu numa rodada de **uma semana**. Rodando 9 meses ele acusou "ESTOUROU,
+# a leitura esta errada" com 17.000 peças, que é justamente o número certo:
+# o alarme comparava 38 semanas de transferência com a produção de uma.
+#
+# Além da escala, a referência é frouxa por natureza (D13): a produção chega
+# inteira na Elena, varejo e atacado juntos, e só parte dela vira transferência
+# para loja. Por isso o teto vale por semana, com folga, e serve para pegar
+# ordem de grandeza — leitura duplicada, evento errado —, não para auditar.
+TETO_POR_SEMANA = 826
+FOLGA = 2.0
 
 
 def dia(texto: str) -> date:
     return date.fromisoformat(texto)
+
+
+def ontem() -> date:
+    """O último dia fechado.
+
+    A janela terminava em `hoje`, e hoje é um dia pela metade: a peça que
+    chegar às 17h entra na rodada da tarde e não estava na de manhã. O mesmo
+    comando, rodado duas vezes no mesmo dia, dava dois Estoques iniciais
+    diferentes — e o número que fecha com a planilha é o do dia fechado.
+    """
+    return date.today() - timedelta(days=1)
 
 
 def e_matriz(nome: str) -> bool:
@@ -74,7 +107,7 @@ def coleta(de: date, ate: date):
     registros = []
     # Fatia mensal: e o mesmo cache que a conferencia enche, entao rodar os
     # dois sobre o mesmo periodo custa uma extracao, nao duas.
-    for doc in mn.documentos_do_periodo(de, ate, (EVENTO,)):
+    for doc in mn.documentos_do_periodo(de, ate, EVENTOS):
         origem = str(doc.get("cod_filial") or "").strip()
         destino = str(doc.get("cod_cliente") or "").strip()
         tipo = classifica(origem, destino)
@@ -103,6 +136,26 @@ def coleta(de: date, ate: date):
     return registros
 
 
+def sanidade(liquido: float, de: date, ate: date) -> list[str]:
+    """As linhas do rodapé: o líquido contra a produção esperada do período.
+
+    Era um trecho solto dentro de `main`, lendo `ate` e `de` que ali se chamam
+    `args.ate` e `args.de` — `NameError` no meio de uma rodada de minutos, e
+    nenhum teste pegou porque `main` não tinha nenhum. Agora é função, e tem.
+    """
+    semanas = max((ate - de).days, 1) / 7
+    esperado = TETO_POR_SEMANA * semanas
+    linhas = [f"  ordem de grandeza: {semanas:.0f} semana(s) x "
+              f"{TETO_POR_SEMANA:,.0f} peca(s) de producao"]
+    if liquido > esperado * FOLGA:
+        linhas[0] += f"  <-- {liquido / esperado:.1f}x A PRODUCAO."
+        linhas.append("  Nao e auditoria: e ordem de grandeza. Tanto acima disso")
+        linhas.append("  costuma ser leitura duplicada ou evento a mais na lista.")
+    else:
+        linhas[0] += f"  ({liquido / esperado:.0%} dela)"
+    return linhas
+
+
 def saldo_por_loja(registros):
     """Quanto cada loja ganhou de estoque, por produto+cor.
 
@@ -124,10 +177,13 @@ def saldo_por_loja(registros):
 
 def main(argv=None):
     p = argparse.ArgumentParser(
-        description="Estoque inicial das lojas pela venda entre filiais (evento 106)")
+        description="Estoque inicial das lojas pela venda entre filiais (106) e pela devolucao para a Elena (207)")
     p.add_argument("--de", type=dia, required=True)
-    p.add_argument("--ate", type=dia, default=date.today(),
-                   help="padrao: hoje. Parar antes da data da planilha faz\n                         produto recem-chegado aparecer com zero, e zero\n                         parece divergencia.")
+    p.add_argument("--ate", type=dia, default=ontem(),
+                   help="padrao: ontem, o ultimo dia fechado. Parar antes da\n"
+                        "                         data da planilha faz produto recem-chegado\n"
+                        "                         aparecer com zero, e zero parece divergencia;\n"
+                        "                         incluir hoje traz um dia pela metade.")
     p.add_argument("-s", "--salvar", help="grava o detalhe por item num CSV")
     p.add_argument("--para-app", metavar="ARQUIVO",
                    help="CSV agregado que o app le: codigo;codigo_cor;cor;quant")
@@ -140,7 +196,7 @@ def main(argv=None):
         print("Nenhum movimento do evento 106 no periodo.")
         return 1
 
-    print(f"\nEvento {EVENTO} — venda entre filiais, {args.de} a {args.ate}")
+    print(f"\nEventos {', '.join(map(str, EVENTOS))} — Elena x lojas, {args.de} a {args.ate}")
     print(f"{len(registros)} item(ns) em movimento\n")
 
     por_tipo = defaultdict(lambda: {"itens": 0, "quant": 0.0, "valor": 0.0})
@@ -171,11 +227,8 @@ def main(argv=None):
 
     print(f"\n  {len(saldo)} combinacao(oes) produto+cor+loja")
     print(f"  entrou {entrou:,.0f} · saiu {saiu:,.0f} · liquido {liquido:,.0f} peca(s)")
-    print(f"  teto da producao no periodo: {TETO_PRODUCAO:,.0f} pecas", end="")
-    if liquido > TETO_PRODUCAO:
-        print("  <-- ESTOUROU. A leitura esta errada.")
-    else:
-        print(f"  ({liquido / TETO_PRODUCAO:.0%} dele)")
+    for linha in sanidade(liquido, args.de, args.ate):
+        print(linha)
 
     consolidado = defaultdict(float)
     for (cod, cod_cor, cor, _loja), q in saldo.items():

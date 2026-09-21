@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evolução do sellout</title>
+<style>
+  .viz-root{
+    color-scheme: light;
+    --surface-1:#fcfcfb; --surface-2:#f3f3f1; --line:#e2e2de;
+    --text-primary:#0b0b0b; --text-secondary:#52514e; --text-muted:#78776f;
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:where(:not([data-theme="light"])) .viz-root{
+      color-scheme: dark;
+      --surface-1:#1a1a19; --surface-2:#242422; --line:#3a3a37;
+      --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#9b9a90;
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+    }
+  }
+  :root[data-theme="dark"] .viz-root{
+    color-scheme: dark;
+    --surface-1:#1a1a19; --surface-2:#242422; --line:#3a3a37;
+    --text-primary:#ffffff; --text-secondary:#c3c2b7; --text-muted:#9b9a90;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--surface-1);color:var(--text-primary);
+       font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  .viz-root{max-width:980px;margin:0 auto;padding:32px 16px 56px}
+  h1{font-size:23px;margin:0 0 6px;letter-spacing:-.01em}
+  .sub{color:var(--text-secondary);margin:0 0 4px;max-width:66ch}
+  .nota{color:var(--text-muted);font-size:13px;margin:0 0 22px;max-width:70ch}
+  .barra{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 18px}
+  button.aba{font:inherit;font-size:13px;padding:7px 13px;border-radius:999px;
+    border:1px solid var(--line);background:var(--surface-1);color:var(--text-secondary);cursor:pointer}
+  button.aba[aria-pressed="true"]{background:var(--surface-2);color:var(--text-primary);
+    border-color:var(--text-muted)}
+  .legenda{display:flex;flex-wrap:wrap;gap:14px;margin:14px 0 0;font-size:13px;
+    color:var(--text-secondary)}
+  .legenda span{display:inline-flex;align-items:center;gap:6px}
+  .chip{width:11px;height:11px;border-radius:3px;display:inline-block}
+  figure{margin:0}
+  svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y}
+  .grade{stroke:var(--line);stroke-width:1}
+  .eixo{fill:var(--text-muted);font-size:11px}
+  .serie{fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .rotulo{font-size:11.5px;font-weight:600;paint-order:stroke;
+    stroke:var(--surface-1);stroke-width:3px}
+  .cursor{stroke:var(--text-muted);stroke-width:1;stroke-dasharray:3 3}
+  .ponto{stroke:var(--surface-1);stroke-width:2}
+  .tip{position:absolute;pointer-events:none;background:var(--surface-1);
+    border:1px solid var(--line);border-radius:9px;padding:9px 11px;font-size:12.5px;
+    box-shadow:0 6px 20px rgb(0 0 0 / .13);min-width:158px;opacity:0;transition:opacity .09s}
+  .tip b{font-weight:600}
+  .tip div{display:flex;justify-content:space-between;gap:14px;color:var(--text-secondary)}
+  .tip .v{color:var(--text-primary);font-variant-numeric:tabular-nums}
+  .envolve{position:relative}
+  details{margin-top:26px;border-top:1px solid var(--line);padding-top:14px}
+  summary{cursor:pointer;color:var(--text-secondary);font-size:13.5px}
+  table{border-collapse:collapse;width:100%;margin-top:12px;font-size:12.5px;
+    font-variant-numeric:tabular-nums}
+  th,td{text-align:right;padding:4px 8px;border-bottom:1px solid var(--line)}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--text-secondary);font-weight:600}
+  .rodape{margin-top:30px;color:var(--text-muted);font-size:12.5px;max-width:70ch}
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <h1>Evolução do sellout, semana a semana</h1>
+  <p class="sub">Mediana do percentual de sellout por coleção. Cada ponto é uma
+     coluna da planilha — agora uma linha no banco, com data.</p>
+  <p class="nota" id="nota"></p>
+
+  <div class="barra">
+    <button class="aba" id="b-cal" aria-pressed="true">Calendário</button>
+    <button class="aba" id="b-idade" aria-pressed="false">Semanas desde a primeira coluna</button>
+  </div>
+
+  <figure class="envolve">
+    <svg id="g" viewBox="0 0 900 420" role="img" aria-labelledby="t-g"></svg>
+    <title id="t-g">Mediana do sellout por coleção ao longo do tempo</title>
+    <div class="tip" id="tip"></div>
+    <div class="legenda" id="leg"></div>
+  </figure>
+
+  <details>
+    <summary>Ver os números</summary>
+    <div id="tabela"></div>
+  </details>
+
+  <p class="rodape" id="rodape"></p>
+</div>
+
+<script id="dados" type="application/json">__DADOS__</script>
+<script>
+(function(){
+  const D = JSON.parse(document.getElementById("dados").textContent);
+  const CORES = ["--s1","--s2","--s3","--s4","--s5"];
+  const nomes = Object.keys(D.calendario).sort();
+  const cor = {}; nomes.forEach((n,i)=> cor[n] = `var(${CORES[i % CORES.length]})`);
+
+  const svg = document.getElementById("g"), tip = document.getElementById("tip");
+  const W=900, H=420, M={t:18,r:64,b:34,l:44};
+  let modo = "cal";
+
+  const semanas = s => s.map(p => p.s);
+  const fmtData = iso => { const [a,m,d] = iso.split("-"); return `${d}/${m}/${a.slice(2)}`; };
+
+  function dados(){
+    if (modo === "cal"){
+      const pts = {};
+      nomes.forEach(n => pts[n] = D.calendario[n].map(p => ({x:+new Date(p.d), y:p.m, n:p.n, d:p.d})));
+      return {pts, rotuloX: v => fmtData(new Date(v).toISOString().slice(0,10))};
+    }
+    const pts = {};
+    nomes.forEach(n => pts[n] = D.idade[n].map(p => ({x:p.s, y:p.m, n:p.n, d:p.d})));
+    return {pts, rotuloX: v => `sem ${Math.round(v)}`};
+  }
+
+  let estado = null;
+
+  function desenha(){
+    const {pts, rotuloX} = dados();
+    const todos = nomes.flatMap(n => pts[n]);
+    const x0 = Math.min(...todos.map(p=>p.x)), x1 = Math.max(...todos.map(p=>p.x));
+    const X = v => M.l + (v - x0) / ((x1 - x0)||1) * (W - M.l - M.r);
+    const Y = v => H - M.b - (v / 100) * (H - M.t - M.b);
+
+    let s = "";
+    for (let g = 0; g <= 100; g += 25){
+      s += `<line class="grade" x1="${M.l}" y1="${Y(g)}" x2="${W-M.r}" y2="${Y(g)}"/>`;
+      s += `<text class="eixo" x="${M.l-9}" y="${Y(g)+4}" text-anchor="end">${g}%</text>`;
+    }
+    const marcas = 6;
+    for (let i = 0; i <= marcas; i++){
+      const v = x0 + (x1-x0) * i / marcas;
+      s += `<text class="eixo" x="${X(v)}" y="${H-M.b+18}" text-anchor="middle">${rotuloX(v)}</text>`;
+    }
+    nomes.forEach(n => {
+      const p = pts[n];
+      if (!p.length) return;
+      const d = p.map((q,i) => `${i?"L":"M"}${X(q.x).toFixed(1)},${Y(q.y).toFixed(1)}`).join(" ");
+      s += `<path class="serie" d="${d}" stroke="${cor[n]}"/>`;
+      const u = p[p.length-1];
+      s += `<circle class="ponto" cx="${X(u.x)}" cy="${Y(u.y)}" r="4" fill="${cor[n]}"/>`;
+      s += `<text class="rotulo" x="${X(u.x)+9}" y="${Y(u.y)+4}" fill="${cor[n]}">${n}</text>`;
+    });
+    s += `<g id="cursor" style="display:none"><line class="cursor" y1="${M.t}" y2="${H-M.b}"/></g>`;
+    s += `<rect id="captura" x="${M.l}" y="${M.t}" width="${W-M.l-M.r}" height="${H-M.t-M.b}" fill="transparent"/>`;
+    svg.innerHTML = s;
+    estado = {pts, X, Y, x0, x1, rotuloX};
+    liga();
+
+    document.getElementById("leg").innerHTML = nomes.map(n =>
+      `<span><i class="chip" style="background:${cor[n]}"></i>${n}</span>`).join("");
+  }
+
+  function liga(){
+    const captura = document.getElementById("captura");
+    const cursor = document.getElementById("cursor");
+    const linha = cursor.querySelector("line");
+
+    function mover(ev){
+      const r = svg.getBoundingClientRect();
+      const px = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+      const vx = (px - r.left) / r.width * W;
+      const valor = estado.x0 + (vx - M.l) / (W - M.l - M.r) * (estado.x1 - estado.x0);
+      let melhor = null;
+      const achados = [];
+      nomes.forEach(n => {
+        const p = estado.pts[n];
+        if (!p.length) return;
+        let q = p[0];
+        for (const c of p) if (Math.abs(c.x - valor) < Math.abs(q.x - valor)) q = c;
+        achados.push({n, q});
+        if (!melhor || Math.abs(q.x - valor) < Math.abs(melhor.q.x - valor)) melhor = {n, q};
+      });
+      if (!melhor) return;
+      const alvo = melhor.q.x;
+      const perto = achados.filter(a => Math.abs(a.q.x - alvo) <= (estado.x1-estado.x0)/60);
+      cursor.style.display = "";
+      linha.setAttribute("x1", estado.X(alvo));
+      linha.setAttribute("x2", estado.X(alvo));
+      tip.innerHTML =
+        `<b>${modo === "cal" ? fmtData(melhor.q.d) : "semana " + Math.round(melhor.q.x)}</b>` +
+        perto.map(a => `<div><span><i class="chip" style="background:${cor[a.n]};margin-right:6px"></i>${a.n}</span>`
+          + `<span class="v">${a.q.y.toFixed(1)}% · ${a.q.n} prod.</span></div>`).join("");
+      const rect = svg.getBoundingClientRect();
+      const esq = estado.X(alvo) / W * rect.width;
+      tip.style.opacity = 1;
+      tip.style.left = Math.min(Math.max(esq + 14, 0), rect.width - tip.offsetWidth - 4) + "px";
+      tip.style.top = "18px";
+    }
+    function sair(){ cursor.style.display = "none"; tip.style.opacity = 0; }
+    captura.addEventListener("mousemove", mover);
+    captura.addEventListener("mouseleave", sair);
+    captura.addEventListener("touchmove", mover, {passive:true});
+    captura.addEventListener("touchend", sair);
+  }
+
+  function tabela(){
+    const linhas = [];
+    nomes.forEach(n => {
+      const s = D.calendario[n];
+      linhas.push(`<tr><td>${n}</td><td>${s.length}</td><td>${fmtData(s[0].d)}</td>`
+        + `<td>${s[0].m.toFixed(1)}%</td><td>${s[s.length-1].m.toFixed(1)}%</td>`
+        + `<td>${s[s.length-1].n}</td></tr>`);
+    });
+    document.getElementById("tabela").innerHTML =
+      `<table><thead><tr><th>Coleção</th><th>Semanas</th><th>Primeira coluna</th>`
+      + `<th>Mediana no início</th><th>Mediana hoje</th><th>Produtos hoje</th></tr></thead>`
+      + `<tbody>${linhas.join("")}</tbody></table>`;
+  }
+
+  document.getElementById("b-cal").onclick = () => {
+    modo = "cal";
+    document.getElementById("b-cal").setAttribute("aria-pressed","true");
+    document.getElementById("b-idade").setAttribute("aria-pressed","false");
+    desenha();
+  };
+  document.getElementById("b-idade").onclick = () => {
+    modo = "idade";
+    document.getElementById("b-idade").setAttribute("aria-pressed","true");
+    document.getElementById("b-cal").setAttribute("aria-pressed","false");
+    desenha();
+  };
+
+  const datas = Object.values(D.calendario).flat().map(p=>p.d).sort();
+  const totalSemanas = new Set(datas).size;
+  document.getElementById("nota").textContent =
+    `${totalSemanas} semanas com coleção identificada, de ${fmtData(datas[0])} a `
+    + `${fmtData(datas[datas.length-1])} — o histórico completo tem 173 semanas, mas as `
+    + `anteriores estão em blocos sem nome de coleção. Mediana, não média: um produto `
+    + `que zerou não puxa a coleção inteira.`;
+  document.getElementById("rodape").textContent =
+    "Duas ressalvas para ler as curvas com honestidade. A semana 0 é a primeira coluna "
+    + "que a planilha registrou para aquela coleção, não necessariamente o lançamento — "
+    + "a SS25 já aparece em 67%, sinal de que começou a ser acompanhada no meio da vida. "
+    + "E enquanto a coleção tem poucos produtos a mediana balança muito: cada produto novo "
+    + "entra em 0% e puxa o meio para baixo, que é o que produz os dentes de serra da SS26 "
+    + "em 2025 e a queda da SS27 agora, de 32% para 25%, justamente quando ela cresceu "
+    + "de 15 para 45 produtos.";
+
+  desenha();
+  tabela();
+})();
+</script>
+</body>
+</html>

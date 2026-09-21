@@ -22,6 +22,19 @@ algumas cores. O vermelho era a convenção que já existia.
 **Se for revista:** no modelo por cor (ver D9) essa regra deixa de ser
 necessária. É a maior simplificação que a migração traz.
 
+**Achado em 21/09, e é grave: a `sellout geral.xlsx` de hoje não tem nenhum
+texto em vermelho.** Zero células com formatação rica nas duas abas de
+trabalho; o único vermelho que sobrou está nos títulos dos blocos
+(`MASCULINO - SS27`, `FEMININO - HOME`), que é decoração e não regra. Ou seja,
+**a D1 está sem entrada** — todo código em duas linhas virou ambiguidade, que é
+exatamente o que a conferência acusou em 14 códigos.
+
+Bate com o incidente registrado na D9: uma rodada apagou o vermelho, e ele
+nunca foi reposto. O `coletor/monta_fontes.py` mede isso antes e depois de
+escrever, mas a medida hoje parte de zero — não há mais o que perder, e sim o
+que restaurar. Enquanto não voltar, a divisão por cor depende do cadastro do
+ERP (D11), que resolve parte dos casos, e do olho de quem confere.
+
 ## D2 · Códigos sem divisão identificável ficam intocados
 
 `212006` (vermelho diz "CORES SS25", que não é cor) e `330011` (duas linhas
@@ -116,6 +129,28 @@ com data e origem.
 mantido na mão.** A entrada no estoque das lojas é a transferência da ELENA ES
 para elas, e isso está no MN, com data, produto, cor e tamanho.
 
+**Decidido em 21/09: congelar menos do que a D10 dizia.** A coluna da planilha
+é por *linha de produto*; o banco trabalha por produto **e cor**. Repartir o
+número da linha entre as cores seria estimativa nossa virando número guardado —
+e número guardado ninguém desfaz seis meses depois. O corte passa a ser por
+data:
+
+- **AW26 e SS27 não são congeladas.** São reconstruídas pelos movimentos do
+  evento 106 desde 01/01/2026, com cor e tamanho de verdade. A conferência de
+  21/09 sustenta: AW26 bate em 97% das linhas dentro de ±10 peças, e no SS27,
+  quando planilha e ERP discordam, quem costuma estar certo é o ERP — a
+  planilha guardou produção, não chegada (D14).
+- **O resto é congelado por produto, sem cor.** São coleções antigas em
+  liquidação: o total ainda importa para o percentual, a divisão por cor já não
+  decide nada.
+- **Código que aparece nos dois lados fica inteiro com o ERP.** Congelar a
+  metade antiga e deixar o ERP somar a dele contaria o produto duas vezes.
+
+Na planilha de 21/09: **106 produtos e 11.261 peças congelados**, 89 produtos e
+4.070 peças reconstruídos. `sellout/db/abertura.py` faz o congelamento e
+`sellout/db/movimentos.py` carrega os movimentos do coletor; os dois só gravam
+com `--aplicar`, e a coluna `origem` diz de onde veio cada número.
+
 ## D11 · A linha comercial é dado nosso — a coleção não
 
 **Revisto em 20/09.** Metade desta decisão estava errada.
@@ -162,6 +197,17 @@ lista mantida à mão, o cadastro responde quem entra. São 28 produtos hoje.
 
 O Site vende do estoque das lojas. Então a filial do e-commerce entra em
 **vendas** e fica de fora de **estoque** — contá-la duplicaria o saldo das lojas.
+
+**A filial do e-commerce é a `00044`** — interno `105` na tabela de filiais, que
+colide com o evento `105`; dois números iguais, coisas diferentes. Ela recebe
+por transferência produto antigo que foi para o Bazar, e **esse saldo não conta
+como estoque**. Em 2026 entraram nela 139 peças em 36 documentos: pouco, e
+justamente o tipo de resíduo que reapareceria mais tarde como diferença sem
+explicação. Regra dada pelo negócio em 20/09.
+
+As cinco filiais que existem: `104 EGREY JDS`, `5 IGUATEMI`, `105 00044`
+(e-commerce), `102 ELENA ES`, `101 ELENA SP`. O resto da tabela é cadastro
+antigo.
 
 Foi por isso que a filial E. GREY saiu do export de estoque em 31/08: orientação
 dada à origem, não defeito. A queda de 12.737 para 9.450 peças foi a correção de
@@ -530,26 +576,77 @@ porque o erro foi de método:
   `105 RECEBIMENTO DE COMPRA P.A (LOJAS)` — 922 movimentos em 2026, o maior
   evento de entrada do ano.
 
-**Quem é sapato o cadastro diz: `grupo = SAPATOS`.** São 62 no cadastro, 19
-deles SS27 ou AW26. Desses 19, **13 não aparecem no fluxo do 106** — é o
-tamanho do buraco do evento 105, medido em vez de estimado. Os 6 que aparecem
-(173 peças) mostram que o caminho não é exclusivo: parte do sapato passa pela
-Elena. Então a regra é **somar 105 e 106**, não escolher um.
+**O 105 é o outro lado do 106 — resolvido em 21/09.** A consulta direta ao
+banco do ERP trouxe os 922 documentos do evento em 2026 (**16.384 peças**,
+contra 16.975 do 106) e depois os 6.540 itens deles. O casamento não deixa
+dúvida:
 
-Dois dos 13 estão cadastrados como `239067ERR` e `239068ERR` — sufixo `ERR` no
-código. Sujeira de cadastro, e quem confia no código para casar planilha e ERP
-não acha esses.
+| | |
+|---|---|
+| produtos no 105 | 306 |
+| desses, presentes também no 106 | **305** |
+| com quantidade **idêntica** nos dois | 198 |
+| exclusivos do 105 | 1 produto, 1 peça |
+| `FORNECEDOR` dos documentos | `559` em 917 dos 922 (16.323 das 16.384 peças) |
 
-Então o Estoque inicial não é só o `106`. É `106` (Elena → lojas) mais `105`
-(compra direta) mais os ajustes `0` e `2`.
+Uma transferência entre as empresas tem dois lançamentos: a Elena **fatura**
+(`106 VENDAS ENTRE FILIAIS`, saída) e a loja **recebe** (`105 RECEBIMENTO DE
+COMPRA P.A (LOJAS)`, entrada). Mesma peça, dois eventos, um movimento físico.
+As diferenças que sobram são de ±1 a ±6 peças — documento emitido num mês e
+recebido no outro.
 
-**O obstáculo técnico:** `vendas_consulta_completa` não enxerga evento de
-entrada — a sondagem do `105` voltou vazia por isso, não por falta de
-movimento. O método que serve é `saidas/MovimentacaoPorGrade`, o único que
-devolve `COD_PRODUTO` **e** `COD_COR` do ERP com filtro por evento e filial.
-Ele exige `QUEBRA` com valor de uma lista que o `$metadata` não publica — não há
-um `EnumType` sequer no arquivo inteiro. Daí `coletor/sonda_parametros.py`, que
-tenta os valores plausíveis e diz qual passa.
+**Consequência: somar 105 e 106 dobraria o Estoque inicial.** A D14 fica como
+está, lendo só o `106`. E a tensão registrada em 20/09 se desfaz sozinha: o
+AW26 fechar com +0,5% usando só um dos lados é exatamente o que se espera de
+dois lançamentos do mesmo movimento.
+
+**O que eu errei aqui.** Você disse "os sapatos não passam pela Elena e entram
+pelo evento recebimento de compra p.a. (lojas)" — verdade do ponto de vista
+comercial, a peça é comprada e não produzida. Eu transformei isso em "existe um
+canal paralelo que o Estoque inicial não vê" e passei quatro rodadas de API
+atrás dele. O canal não existe; o que existe é o mesmo movimento escriturado
+dos dois lados.
+
+**Confirmado pelo negócio em 21/09: o `FORNECEDOR 559` é a ELENA ES.** A loja
+compra da Elena; a Elena fatura para a loja. Os dois lançamentos têm as duas
+pontas do mesmo par, e o assunto está fechado.
+
+**A regra que sai daí, e vale para todo evento novo:** antes de somar um evento
+ao Estoque inicial, conferir se ele não é a contrapartida de outro que já está
+na conta. O par se reconhece assim — mesmos produtos, mesmas quantidades,
+mesmo cliente/fornecedor dos dois lados. Um evento de entrada e um de saída com
+o mesmo conteúdo são um movimento, não dois.
+
+**Os sapatos de SS27 ainda não chegaram.** Os 13 que eu tinha dado como "buraco
+do 105" não aparecem em nenhum dos dois eventos: `239065`, `239066`, `239069`,
+`239082`, `334119` a `334122`, `334159`, `336012`, `336013` e os dois com
+sufixo `ERR` no código (`239067ERR`, `239068ERR` — sujeira de cadastro, e quem
+casa planilha e ERP pelo código não acha esses). Não é leitura faltando: é
+coleção que está entrando agora. O `239067`, que chegou dia 14, aparece com 15
+peças.
+
+**O que o 105 mostra de verdade**, por ser o lado da entrada e trazer a filial
+de destino sem ambiguidade:
+
+| destino | peças |
+|---|---:|
+| 104 EGREY JDS | 9.894 |
+| 5 IGUATEMI | 6.282 |
+| 105 00044 (e-commerce, Bazar — não conta estoque) | 139 |
+| ELENA ES / ELENA SP / 00040 | 69 |
+
+E por coleção, nas lojas: AW26 8.937, SS27 3.418, PERENE 2.919 (Clássicos),
+o resto abaixo de 300. Calçado inteiro: 492 peças em 14 produtos — 3% do total.
+O 105 nunca foi sobre sapato.
+
+**O obstáculo técnico que deixou de importar:** `vendas_consulta_completa` não
+enxerga evento de entrada, e o `Lista_Por_Evento` não respondeu nem ao `106` no
+teste de controle. Gastei quatro rodadas no `saidas/MovimentacaoPorGrade`, que
+é relatório e cobra `QUEBRA` — booleano, aliás, e o erro de SQL que ele devolvia
+era o `SCRIPTEVENTO`, não o `QUEBRA`. Uma consulta ao banco do ERP resolveu em
+dois arquivos. `coletor/sonda_parametros.py` fica para o próximo método que
+cobrar parâmetro não publicado; a lição é outra: **quando existe acesso ao banco,
+perguntar ao banco primeiro.**
 
 ### A janela da extração tem que alcançar a planilha (20/09)
 
@@ -589,3 +686,108 @@ python -m coletor.estoque_inicial --de 2026-01-01 --ate 2026-09-07 \
 rodada soma a aba Producao ao Estoque inicial de quem já tem linha (D5). Pela
 mesma lógica, deveria somar a transferência. Fica para depois de a conferência
 fechar, porque ali há histórico em jogo.
+
+## D15 · O evento 207 é devolução para a Elena — sai do estoque, não da venda
+
+Em setembro/2026 a Egrey criou o evento **207** (`00210`,
+`DEVOLUÇÃO PARA ELENATIMES`) para a loja devolver peça que não vendeu. A
+primeira vez que ele apareceu foi na devolução recente da Jardins, e é o que
+explicava as devoluções que faltavam na comparação da semana de 14 a 20/09:
+**todas eram da EGREY JDS**.
+
+O export de vendas do ERP traz esse evento como **venda negativa**, e foi por
+aí que ele entrou na conversa. Mas a peça nunca foi vendida: ela saiu da loja e
+voltou para a Elena.
+
+**Decidido pelo negócio em 21/09: entra como saída de estoque.** Abate o
+**Estoque inicial**, não a Venda.
+
+A diferença não é cosmética. Contar como venda encolheria o numerador e
+deixaria o denominador intacto — erro dos dois lados, num indicador que é
+razão. Como saída de estoque, o denominador cai junto com a peça que saiu, que
+é o que de fato aconteceu.
+
+**Onde isso vive no código:** `coletor/conferencia.py` e
+`coletor/estoque_inicial.py` passam a puxar `EVENTOS = (106, 207)`. A lógica de
+direção já existente (`_matriz`, `LOJAS`) reconhece loja → Elena como `sinal =
+-1`, então o 207 subtrai sem nenhum tratamento especial. `coletor/vendas.py`
+**não** o inclui, de propósito.
+
+O volume hoje é pequeno — evento recém-criado, uma devolução só —, então a
+conferência de 9 meses praticamente não se move. O valor da mudança é a partir
+de agora: quando a loja devolver de novo, o estoque acompanha sozinho.
+
+## D16 · A janela vai até ontem, e o teto de sanidade é por semana
+
+Duas correções que saíram da primeira rodada de 9 meses com o 207 incluído.
+
+### O dia de hoje não entra
+
+A D14 tinha empurrado `--ate` para **hoje**, para que produto recém-chegado não
+aparecesse com ERP zerado. Foi longe demais: **hoje é um dia pela metade**. A
+peça que chega às 17h está na rodada da tarde e não estava na da manhã, e o
+mesmo comando passa a devolver dois Estoques iniciais diferentes no mesmo dia.
+Pior, o número não fecha com a planilha, que é fechada por dia.
+
+`--ate` passa a valer **ontem**, o último dia fechado, em `conferencia.py` e em
+`estoque_inicial.py` — uma definição só, importada, porque as duas precisam da
+**mesma** janela: se divergirem, uma acusa divergência que a outra criou.
+
+O aviso de janela curta também passa a comparar com ontem. Comparando com hoje,
+a rodada certa avisava sempre — e aviso que aparece sempre deixa de ser lido.
+
+### O teto de produção era de uma semana
+
+O rodapé trazia `TETO_PRODUCAO = 826`, peça acabada da aba Producao, comparado
+direto com o líquido do período. Era um número de **uma semana**, e na rodada de
+9 meses ele acusou `ESTOUROU. A leitura esta errada.` contra 17.000 peças — que
+é o número certo. O alarme comparava 38 semanas de transferência com a produção
+de uma.
+
+Agora o teto é **por semana**, multiplicado pelas semanas da janela, com folga
+de 2x. As mesmas 17.000 peças dão 55% da produção do período, que é uma
+proporção plausível: a produção chega inteira na Elena, varejo e atacado juntos
+(D13), e só parte vira transferência para loja.
+
+**O que esse teto é:** ordem de grandeza, para pegar leitura duplicada ou
+evento a mais na lista. Não é auditoria, e o texto passa a dizer isso.
+
+## D17 · Gravar a planilha pelo openpyxl apaga uma semana de histórico
+
+Em 21/09 a rodada saiu com a coluna **`Sellout 14/09` em branco**. A `21/09`
+apareceu certa; a anterior, que deveria ter sido congelada com o valor da
+semana, veio vazia.
+
+**A causa:** o openpyxl não calcula fórmula, e ao salvar descarta o resultado
+que o Excel tinha guardado em cada célula. O `monta_fontes` abria a planilha
+inteira, escrevia as abas de origem e salvava — e nisso apagou o valor guardado
+das 1.598 fórmulas das abas de trabalho.
+
+O app congela a coluna da semana passada lendo justamente esse valor:
+
+```python
+cache_sellout = {r: ws_val.cell(r, col_sellout).value ...}   # data_only=True
+```
+
+Achou `None` e escreveu vazio. **Nada acusou** — o arquivo abre, as fórmulas
+estão lá, e o Excel recalcula ao abrir. Só quem lê por programa vê o buraco.
+
+**A correção:** o `.xlsx` passa a ser tratado como o zip que é
+(`coletor/planilha_xml.py`). Cada parte é copiada byte a byte e só o XML das
+três abas de dados é trocado. As abas de trabalho não são lidas nem
+reescritas — chegam do outro lado idênticas, com o valor guardado, o vermelho
+da D1 e a formatação. Conferido na planilha real: **5.379 células das abas de
+trabalho iguais, zero diferentes**, e as 1.598 fórmulas com valor intactas.
+
+Os textos das abas novas vão como `inlineStr`, não pela tabela de textos
+compartilhados: assim uma aba trocada não depende de índices que pertencem às
+outras.
+
+**A guarda que faltava:** o `monta_fontes` já contava o texto em vermelho antes
+e depois. Passa a contar também as fórmulas com valor guardado, e se o número
+cair ele recusa o arquivo. Era a metade da integridade que ninguém media.
+
+**Lição que vale além deste caso:** biblioteca que reescreve um formato rico
+devolve *quase* o mesmo arquivo, e o que ela perde no caminho não aparece na
+tela. Quando só uma parte precisa mudar, trocar só aquela parte é mais seguro
+do que reescrever tudo — mesmo custando mais código.

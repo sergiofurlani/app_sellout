@@ -72,6 +72,175 @@ def dia(t: str) -> date:
     return date.fromisoformat(t)
 
 
+def procurar(termo: str, limite: int = 60) -> int:
+    """Acha o caminho de um método no `$metadata`, por pedaço do nome.
+
+    O `$metadata` tem 5.413 FunctionImports e 7,9 MB. Ninguém lê isso; e
+    adivinhar o grupo (`precos/ListaPreco`? `produtos/ListaPreco`?) custa uma
+    rodada de tentativa e erro por palpite. Aqui o servidor responde.
+
+    O arquivo é guardado em `.cache_mn/metadata.xml` — baixar 7,9 MB toda vez
+    para procurar outra palavra é desperdício.
+    """
+    import pathlib
+    import re as _re
+    import urllib.request
+
+    cache = pathlib.Path(".cache_mn") / "metadata.xml"
+    if cache.exists() and cache.stat().st_size > 1000:
+        texto = cache.read_text(encoding="utf-8", errors="replace")
+        print(f"  ({cache}, {len(texto)/1e6:.1f} MB — apague para rebaixar)")
+    else:
+        url = f"{mn.BASE}/api/millenium/$metadata"
+        print(f"  baixando {url} ...")
+        try:
+            req = urllib.request.Request(url, headers={"Authorization": mn._auth()})
+            with urllib.request.urlopen(req, timeout=mn.TIMEOUT) as r:
+                texto = r.read().decode("utf-8", errors="replace")
+        except Exception as e:                      # rede, 401, o que for
+            print(f"  FALHOU: {e}")
+            return 1
+        cache.parent.mkdir(exist_ok=True)
+        cache.write_text(texto, encoding="utf-8")
+        print(f"  {len(texto)/1e6:.1f} MB guardados em {cache}")
+
+    # O grupo do caminho é o **EntitySet** do FunctionImport, não o
+    # EntityContainer: o arquivo inteiro tem um container só, chamado
+    # `millenium`, e 461 EntitySets dentro dele. Ler o container fazia todo
+    # método virar `millenium/X`, que não existe como URL.
+    alvo = termo.strip().upper()
+    achados = []
+    for m in _re.finditer(r'<FunctionImport\s([^>]*?)/?>', texto):
+        tag = m.group(1)
+        nome = _re.search(r'Name="([^"]*)"', tag)
+        grupo = _re.search(r'EntitySet="([^"]*)"', tag)
+        if not nome:
+            continue
+        g = (grupo.group(1) if grupo else "?").lower()
+        if alvo in nome.group(1).upper() or alvo in g.upper():
+            achados.append((g, nome.group(1)))
+
+    print(f"\n  {len(achados)} metodo(s) com {termo!r} no nome\n")
+    for g, n in achados[:limite]:
+        print(f"    {g}/{n}")
+    if len(achados) > limite:
+        print(f"    ... e mais {len(achados) - limite}")
+    if achados:
+        g, n = achados[0]
+        print(f"\n  Para ver se responde e quais campos traz:")
+        print(f"    python -m coletor.sonda_parametros {g}/{n} --espiar")
+    return 0 if achados else 1
+
+
+def _metadata() -> str | None:
+    """O $metadata, do cache. `--procurar` baixa."""
+    import pathlib
+    cache = pathlib.Path(".cache_mn") / "metadata.xml"
+    if cache.exists() and cache.stat().st_size > 1000:
+        return cache.read_text(encoding="utf-8", errors="replace")
+    return None
+
+
+def parametros(metodo: str) -> int:
+    """Lista os parâmetros que o método aceita, direto do `$metadata`.
+
+    O `$metadata` **não publica os valores** de `QUEBRA` e companhia — daí a
+    sonda. Mas publica os nomes e os tipos, e isso eu vinha adivinhando: o
+    `MovimentacaoPorGrade` levou quatro rodadas porque eu supus `SCRIPTEVENTO`
+    e `QUEBRA` em vez de ler a lista. Tipo booleano aqui explica de graça o
+    "Could not convert variant of type (String) into type (Boolean)".
+    """
+    import re as _re
+    texto = _metadata()
+    if texto is None:
+        print("  Sem $metadata em cache. Rode antes:")
+        print("    python -m coletor.sonda_parametros --procurar <palavra>")
+        return 1
+
+    grupo, _, nome = metodo.strip("/").partition("/")
+    if not nome:
+        print("  Informe grupo/Metodo, ex.: precos/Lista")
+        return 1
+
+    # O grupo do caminho é o **EntitySet** do FunctionImport. O arquivo tem um
+    # EntityContainer só, chamado `millenium`, e 461 EntitySets dentro dele —
+    # ler o container fazia todo método virar `millenium/X`, que não existe
+    # como URL. Nome de método se repete entre grupos (quase todo grupo tem um
+    # `Lista`), então filtrar pelos dois é obrigatório.
+    achado = corpo = None
+    no_grupo = []
+    for m in _re.finditer(r'<FunctionImport\s([^>]*?)(/?)>', texto):
+        tag = m.group(1)
+        g = _re.search(r'EntitySet="([^"]*)"', tag)
+        n = _re.search(r'Name="([^"]*)"', tag)
+        if not n or not g or g.group(1).lower() != grupo.lower():
+            continue
+        no_grupo.append(n.group(1))
+        if n.group(1).lower() == nome.lower():
+            achado = tag
+            if m.group(2) == "/":
+                corpo = ""              # tag fechada em si mesma: sem parâmetro
+            else:
+                fim = texto.find("</FunctionImport>", m.end())
+                corpo = texto[m.end():fim if fim > 0 else None]
+    if achado is None:
+        if not no_grupo:
+            print(f"  Grupo {grupo!r} nao existe no $metadata.")
+            return 1
+        print(f"  {grupo}/{nome} nao existe. Metodos do grupo {grupo}:")
+        for n in sorted(no_grupo):
+            print(f"    {grupo}/{n}")
+        return 1
+    linhas = _re.findall(r'<Parameter\s([^>]*)/?>', corpo)
+    if not linhas:
+        print(f"  {grupo}/{nome} nao declara parametro nenhum.")
+        return 0
+
+    def atributo(txt, nome_attr):
+        m = _re.search(nome_attr + r'="([^"]*)"', txt)
+        return m.group(1) if m else ""
+
+    print(f"\n  {grupo}/{nome} — {len(linhas)} parametro(s)\n")
+    print(f'    {"nome":28} {"tipo":22} modo')
+    for l in linhas:
+        tipo = atributo(l, "Type").replace("Edm.", "")
+        print(f'    {atributo(l, "Name"):28} {tipo:22} {atributo(l, "Mode")}')
+    print("\n  Booleano so aceita 0 ou 1. String com lista fechada e o que a sonda")
+    print("  descobre por tentativa — o $metadata nao publica os valores.")
+    campos(achado, texto)
+    return 0
+
+
+def campos(tag_abertura: str, texto: str) -> None:
+    """Imprime os campos que o método devolve, pelo `ReturnType`.
+
+    `Collection(millenium.MILLENIUM_PRECOS_PRODUTOS_PRECOS)` aponta para um
+    tipo declarado no mesmo arquivo, e esse tipo lista as propriedades. Ou
+    seja: dá para saber o que o método devolve **sem chamá-lo** — e sem
+    depender de ele responder com linha, que foi o que travou o precos/Lista.
+    """
+    import re as _re
+    m = _re.search(r'ReturnType="([^"]+)"', tag_abertura)
+    if not m:
+        return
+    tipo = m.group(1)
+    nu = _re.sub(r"^Collection\((.*)\)$", r"\1", tipo.strip())
+    curto = nu.rsplit(".", 1)[-1]
+    achado = _re.search(
+        r'<(EntityType|ComplexType)\s[^>]*Name="' + _re.escape(curto) + r'"[^>]*>(.*?)</\1>',
+        texto, _re.S | _re.I)
+    if not achado:
+        print(f"\n  ReturnType {tipo} — tipo nao encontrado no $metadata.")
+        return
+    props = _re.findall(r'<Property\s([^>]*)/?>', achado.group(2))
+    print(f"\n  Devolve {curto} — {len(props)} campo(s)\n")
+    for p in props:
+        nome = _re.search(r'Name="([^"]*)"', p)
+        t = _re.search(r'Type="([^"]*)"', p)
+        print(f'    {(nome.group(1) if nome else "?"):30} '
+              f'{(t.group(1).replace("Edm.", "") if t else ""):16}')
+
+
 def pares(texto: str) -> dict:
     """--extras SCRIPTEVENTO=105,FILIAL=00044 -> dict."""
     fora = {}
@@ -213,7 +382,12 @@ def espiar(caminho, extras, de, ate, top):
 def main(argv=None):
     p = argparse.ArgumentParser(
         description="Tenta valores para um parametro de relatorio do MN")
-    p.add_argument("metodo", help="grupo/Metodo, ex.: saidas/MovimentacaoPorGrade")
+    p.add_argument("metodo", nargs="?",
+                   help="grupo/Metodo, ex.: saidas/MovimentacaoPorGrade")
+    p.add_argument("--procurar", metavar="TERMO",
+                   help="acha o caminho de um metodo no $metadata pelo nome")
+    p.add_argument("--parametros", action="store_true",
+                   help="lista os parametros do metodo, do $metadata")
     p.add_argument("--parametro", help="QUEBRA, LAYOUT, ORDEM, CAMPO")
     p.add_argument("--espiar", action="store_true",
                    help="so pergunta se o metodo devolve algo, e mostra os campos")
@@ -228,9 +402,26 @@ def main(argv=None):
     p.add_argument("--fundo", type=int, default=4,
                    help="ate quantos parametros encadear (0 = nao encadeia)")
     p.add_argument("--max-chamadas", type=int, default=400)
+    p.add_argument("--post", action="store_true",
+                   help="chama com POST de corpo vazio, como a documentacao da MN")
     args = p.parse_args(argv)
+    mn.POST = args.post
 
-    caminho = f"/api/millenium/{args.metodo.strip('/')}"
+    if args.procurar:
+        print(f"\nProcurando {args.procurar!r} no $metadata")
+        return procurar(args.procurar)
+    if not args.metodo:
+        p.error("informe o metodo, ou use --procurar TERMO")
+    if args.parametros:
+        return parametros(args.metodo)
+
+    # Duas grafias do mesmo endereço. `grupo/Metodo` é a que este projeto usa;
+    # `NAMESPACE.GRUPO.METODO` é a da documentação da MN, e é a única forma de
+    # alcançar outro namespace — o `MILLENIUM_ECO`, por exemplo, que é a API de
+    # integração do e-commerce e não aparece no $metadata do `millenium`.
+    bruto = args.metodo.strip("/")
+    caminho = f"/api/{bruto}" if ("." in bruto and "/" not in bruto) \
+        else f"/api/millenium/{bruto}"
     if args.espiar:
         print(f"\n{caminho}  — espiando\n")
         return espiar(caminho, pares(args.extras), args.de, args.ate, args.top)

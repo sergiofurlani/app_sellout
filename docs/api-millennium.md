@@ -157,24 +157,53 @@ A melhor janela de 7 dias, contra a coluna SITE do export:
 Produtos distintos bate exato; a diferença é **uma peça de R$ 750,47** — um item
 só, de um produto que já estava no conjunto. Não é erro de regra nem de filial.
 
-**O período ainda não está fechado — e o erro de método vale registrar.** A
-primeira varredura pontuava **só o SITE**, e apontou 31/08–04/09. Rodando as
-três colunas nessa janela:
+**Período do export: 31/08 a 07/09.** Puxado em 08/09, cobrindo até o dia 07 —
+feriado em São Paulo, lojas abertas. A rodada manual anterior tinha sido em
+31/08. O arquivo só chegou ao projeto em 18/09, e tratar a data de chegada como
+data do conteúdo custou duas varreduras.
 
-| | API | Planilha | razão |
+### O resultado da validação (19/09)
+
+| | API | Planilha | diferença |
 |---|---|---|---|
-| SITE | 20 peças · R$ 24.798 | 21 · R$ 25.548 | 0,96 |
-| IGUATEMI | 97 peças · R$ 120.494 | 152 · R$ 183.579 | 0,64 |
-| JARDINS | 74 peças · R$ 89.962 | 112 · R$ 136.586 | 0,66 |
+| **IGUATEMI** | 152 peças · R$ 183.579,10 | 152 · R$ 183.579,10 | **zero, ao centavo** |
+| JARDINS | 110 peças · R$ 136.362,80 | 112 · R$ 136.585,80 | 2 peças · R$ 223,00 |
+| SITE | 20 peças · R$ 24.797,97 | 21 · R$ 25.548,44 | 1 peça · R$ 750,47 |
 
-As duas lojas em ~65%, com espantosa consistência entre si, e o Site em ~100%.
-Isso não é ruído: 31/08–04/09 é **segunda a sexta**. O e-commerce fatura em dia
-útil, então para ele a janela está completa; a loja de shopping vende no fim de
-semana, e a janela corta justamente os dois dias mais fortes.
+IGUATEMI bater **ao centavo** é o que valida a regra de agregação inteira:
+linha de quantidade zero ignorada, devolução chegando positiva e subtraída,
+`valor_acerto` somado uma vez por documento. Nenhuma dessas convenções erra e
+ainda assim acerta 152 peças e R$ 183.579,10 por acidente.
 
-Ou seja: o Site batia ali **porque** o fim de semana estava de fora. Otimizar
-por uma coluna só escolheu a janela que mais escondia o buraco das outras duas.
-A varredura agora pontua as três juntas e testa vários tamanhos de janela.
+Sobram **3 peças e R$ 973,47 em 285 peças e R$ 345.713** — 1,05% e 0,28%,
+concentrados em duas filiais. Com a regra provada certa pela terceira, o resíduo
+é de documento, não de método. A hipótese mais provável é **cancelamento
+posterior ao export**: a planilha congelou o ERP em 08/09, a API mostra o ERP de
+hoje. Uma venda cancelada depois desaparece de um lado e não do outro.
+
+Isso não é defeito a corrigir — é argumento a favor do retrato semanal imutável
+no banco (D9).
+
+**O Site não mudou nada entre 04/09 e 07/09**: mesmas 20 peças, mesmo valor,
+mesmas 35 linhas. Três dias — sábado, domingo e feriado — com zero faturamento
+de e-commerce. Confirma que o evento `00003` marca a emissão da nota, em dia
+útil, e não o pedido.
+
+**Produtos distintos não é comparável**, pelo mesmo motivo que linhas: a aba
+Vendas conta linha de quantidade zero, que é pedido e não venda. JARDINS mostra
+75 pela API contra 118 na aba, com 134 linhas contra 317.
+
+### O erro de método que precedeu isso
+
+A primeira varredura pontuava **só o SITE** e apontou 31/08–04/09, onde o Site
+batia 96% e as duas lojas ficavam em 64% e 66% — as duas com a mesma razão, o
+que já denunciava fatia faltando, não ruído.
+
+31/08–04/09 é segunda a sexta. O Site batia ali **porque** o fim de semana
+estava de fora. Otimizar contra uma coluna só encontra o recorte que mais
+favorece aquela coluna — que era, por construção, o que mais escondia o buraco
+das outras duas. A varredura agora soma o erro das três e testa vários tamanhos
+de janela.
 
 Referência completa do export, para comparações futuras:
 
@@ -510,6 +539,51 @@ relatórios ficam para quando fizerem falta.
 `IMPRESSAO`) é feito para a tela do ERP e cobra parâmetros de apresentação.
 Método de consulta (`DATAI`, `DATAF`, `EVENTO`, `FILIAL`) é feito para ser
 chamado. Preferir o segundo sempre que existir.
+
+## O `$metadata` responde mais do que eu supunha (21/09)
+
+Três coisas que eu vinha adivinhando e estão escritas no arquivo:
+
+**1. O grupo do caminho é o `EntitySet`, não o container.** O arquivo inteiro
+tem **um** `EntityContainer`, chamado `millenium`, e 461 `EntitySet` dentro
+dele. `/api/millenium/produtosac/Lista` é `EntitySet="PRODUTOSAC"` +
+`FunctionImport Name="Lista"`. Procurar pelo container faz todo método virar
+`millenium/X`, que não existe como URL.
+
+**2. Os nomes e tipos dos parâmetros estão publicados.** Só os *valores* de
+lista fechada é que não. O `produtosac/Lista` declara `CAMPO` e `ORDEM` como
+`Int32` — por isso `CAMPO=0, ORDEM=0` funcionou e as quinze tentativas com
+texto falharam. O `QUEBRA` do `MovimentacaoPorGrade` é `Boolean`, o que
+explica de graça o *"Could not convert variant of type (String) into type
+(Boolean)"* que me custou duas rodadas.
+
+**3. O `ReturnType` diz os campos sem chamar o método.** Ele aponta para um
+tipo declarado no mesmo arquivo. Foi assim que se descobriu o que o
+`precos/Lista` devolve, mesmo ele respondendo vazio.
+
+`coletor/sonda_parametros.py --procurar` e `--parametros` fazem as três
+leituras. A sonda por tentativa continua existindo só para o que sobra: os
+valores das listas fechadas.
+
+### As duas fontes que faltavam, achadas aqui
+
+| método | parâmetros | devolve |
+|---|---|---|
+| `estoque/Lista` | `ORDEM`, `SCRIPTFILIAL`, `LOJA`, `COR`, `ESTAMPA`, `TAMANHO`, `TIPO`, `LOTE` | `COD_PRODUTO`, `COR`/`DESC_COR`, `TAMANHO`, `QUANTIDADE`, `EMPENHADO`, `TOTAL`, `FILIAL`/`DESC_FILIAL` |
+| `precos/ConsultaParaExportarPlanilha` | `PRODUTOS` (coleção), `EXPORTA_BARRA` | `COD_PRODUTO`, `COD_COR`, `TAMANHO`, `BARRA_EAN`, `PRECO` |
+| `precos/Lista` | `TABELA`, `PRODUTO`, `COR`, `TAMANHO`, validade… | `TABELA`/`DESC_TABELA`, `PRECO`, `COR`, `TAMANHO`, validade — **um produto por chamada** |
+
+`estoque/Lista` é a aba Estoque inteira: produto, cor, tamanho, filial e
+quantidade, com `EMPENHADO` de brinde. `precos/Lista` cobra `PRODUTO` e serve
+para conferir um item; para a aba Preço inteira o candidato é o
+`ConsultaParaExportarPlanilha`, cujo `PRODUTOS` é uma coleção — falta
+descobrir como passá-la numa chamada GET.
+
+**Existe um segundo namespace, `MILLENIUM_ECO`**, que este `$metadata` não
+cobre — é a API do e-commerce, com métodos próprios como
+`PRODUTOS.PRECODETABELA`, que aceita `PRODUTOS=` e `TABELA1..4`. Se ele
+devolver a tabela inteira numa chamada, resolve o preço melhor que os dois
+acima. Ainda não foi testado.
 
 ## O que ainda falta descobrir
 

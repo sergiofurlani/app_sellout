@@ -23,13 +23,24 @@ def url() -> str | None:
 
 
 def disponivel() -> bool:
+    return por_que_nao() is None
+
+
+def por_que_nao() -> str | None:
+    """None quando dá para conectar; senão, a razão em uma frase.
+
+    As duas causas são diferentes e exigem ações diferentes — sem separá-las,
+    faltar o psycopg aparecia como "DATABASE_URL não definida", que manda a
+    pessoa procurar no lugar errado.
+    """
     if url() is None:
-        return False
+        return ("DATABASE_URL nao definida no ambiente (as alternativas aceitas "
+                "sao " + ", ".join(VARIAVEIS[1:]) + ")")
     try:
         import psycopg  # noqa: F401
     except ImportError:
-        return False
-    return True
+        return ("psycopg nao instalado — rode: pip install -r requirements.txt")
+    return None
 
 
 @contextmanager
