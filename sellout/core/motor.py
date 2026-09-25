@@ -77,6 +77,30 @@ class Planilha:
 # Etapa 1 — análise
 # --------------------------------------------------------------------------- #
 
+def diagnostico_entradas(fontes) -> dict:
+    """Em que estado chegou o `entradas-erp.csv` — e o que isso custa.
+
+    Desde a D18 o Estoque inicial só cresce pela transferência da Elena. Sem
+    o arquivo, o incremento é **zero**: a rodada termina sem erro nenhum e
+    devolve uma planilha com o denominador congelado, o que faz o sellout
+    subir sozinho. Processar calado, aqui, é pior do que recusar.
+
+    São três estados, e dois deles são armadilha:
+
+        ok       o arquivo veio com as duas colunas
+        antigo   veio sem `quant_semana` — só serve para produto novo
+        ausente  não veio; nada cresce nesta rodada
+    """
+    if not fontes.entradas_erp:
+        return {"estado": "ausente", "produtos": 0, "pecas_semana": 0}
+    if not fontes.entradas_erp_semana:
+        return {"estado": "antigo", "produtos": len(fontes.entradas_erp),
+                "pecas_semana": 0}
+    return {"estado": "ok", "produtos": len(fontes.entradas_erp),
+            "pecas_semana": sum(sum(d.values())
+                                for d in fontes.entradas_erp_semana.values())}
+
+
 def analisar(caminho_geral, caminho_classicos, entradas_erp=None) -> dict:
     fontes = carrega_fontes(caminho_geral, entradas_erp=entradas_erp)
     planilhas = [Planilha(caminho_geral, "Geral"), Planilha(caminho_classicos, "Clássicos")]
@@ -150,6 +174,7 @@ def analisar(caminho_geral, caminho_classicos, entradas_erp=None) -> dict:
         "duplicados_pendentes": pendentes,
         "duplicados_resolvidos": resolvidos,
         "novos_candidatos": novos,
+        "entradas_erp": diagnostico_entradas(fontes),
         "avisos": fontes.avisos,
         "colunas_usadas": fontes.colunas_usadas,
         "valores_ignorados": fontes.valores_ignorados[:50],

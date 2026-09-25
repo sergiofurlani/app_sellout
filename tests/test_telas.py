@@ -45,6 +45,7 @@ def analise(**extra):
         "novos_candidatos": [], "avisos": [], "colunas_usadas": {},
         "valores_ignorados": [], "total_valores_ignorados": 0,
         "data_sugerida": "Sellout 21/09",
+        "entradas_erp": {"estado": "ok", "produtos": 690, "pecas_semana": 120},
     }
     base.update(extra)
     return base
@@ -95,3 +96,41 @@ def test_a_regra_da_producao_saiu_da_tela(env):
         request=_Req(), job="x", a=analise(),
         nomes={"geral": "g.xlsx", "classicos": "c.xlsx"})
     assert "producao_exige_estoque" not in html
+
+
+def test_revisao_avisa_quando_o_csv_do_erp_nao_veio(env):
+    """**Sem o arquivo, nenhuma linha recebe peça** — e a rodada terminaria
+    calada, com o denominador congelado e o sellout subindo sozinho. Desde a
+    D18 isso é pior do que recusar, então a tela exige confirmação."""
+    a = analise(entradas_erp={"estado": "ausente", "produtos": 0, "pecas_semana": 0})
+    html = env.get_template("revisao.html").render(
+        request=_Req(), job="x", a=a,
+        nomes={"geral": "g.xlsx", "classicos": "c.xlsx"})
+    assert "painel alerta" in html
+    assert 'name="confirma_sem_entradas"' in html and "required" in html
+
+
+def test_revisao_avisa_quando_o_csv_e_do_formato_antigo(env):
+    """CSV sem `quant_semana`: só produto novo recebe peça. É o caso mais
+    traiçoeiro dos três, porque o arquivo existe e parece certo."""
+    a = analise(entradas_erp={"estado": "antigo", "produtos": 690, "pecas_semana": 0})
+    html = env.get_template("revisao.html").render(
+        request=_Req(), job="x", a=a,
+        nomes={"geral": "g.xlsx", "classicos": "c.xlsx"})
+    assert "formato antigo" in html and "quant_semana" in html
+
+
+def test_revisao_nao_incomoda_quando_esta_tudo_certo(env):
+    """Aviso que aparece sempre deixa de ser lido."""
+    html = env.get_template("revisao.html").render(
+        request=_Req(), job="x", a=analise(),
+        nomes={"geral": "g.xlsx", "classicos": "c.xlsx"})
+    assert "painel alerta" not in html
+    assert "confirma_sem_entradas" not in html
+
+
+def test_resultado_diz_quando_nada_cresceu(env):
+    html = env.get_template("resultado.html").render(
+        request=_Req(), job="x", rel=relatorio(entradas_semana=[]),
+        decisoes={"data_sellout": "Sellout 21/09"}, banco=None)
+    assert "nao cresceu" in html.replace("ã", "a").replace("ó", "o")

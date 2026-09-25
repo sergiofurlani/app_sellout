@@ -19,6 +19,7 @@
     <li><strong>{{ rel.novos_inseridos|length }}</strong>produtos novos</li>
     <li><strong>{{ rel.por_cor|length }}</strong>linhas divididas por cor</li>
     <li><strong>{{ rel.entradas_semana|length }}</strong>entradas do ERP no Estoque inicial</li>
+    {% if not rel.entradas_semana %}<li class="aviso"><strong>0</strong>nenhuma linha recebeu peça — o Estoque inicial não cresceu nesta rodada</li>{% endif %}
     <li><strong>{{ rel.formulas_ajustadas|length }}</strong>fórmulas reajustadas</li>
   </ul>
 </div>

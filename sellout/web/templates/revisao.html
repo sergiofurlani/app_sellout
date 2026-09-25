@@ -35,6 +35,33 @@
 </div>
 {% endif %}
 
+{% if a.entradas_erp.estado != 'ok' %}
+<div class="painel alerta">
+  <h2>{% if a.entradas_erp.estado == 'ausente' %}O arquivo de entradas do ERP não veio
+      {% else %}O arquivo de entradas do ERP está no formato antigo{% endif %}</h2>
+  <p class="ajuda">
+    O Estoque inicial só cresce pela transferência da Elena para as lojas.
+    {% if a.entradas_erp.estado == 'ausente' %}
+      Sem o <code>entradas-erp.csv</code>, <strong>nenhuma linha recebe peça nesta
+      rodada</strong>: o denominador congela e o sellout sobe sozinho, sem que o
+      número esteja errado em lugar nenhum visível.
+    {% else %}
+      Este arquivo tem <strong>{{ a.entradas_erp.produtos }}</strong> produtos, mas não
+      tem a coluna <code>quant_semana</code>. Ela é o que entra nas linhas que já
+      existem; sem ela, <strong>só produto novo recebe peça</strong> e o resto congela.
+      Gere de novo com a versão atual do coletor.
+    {% endif %}
+  </p>
+  <label class="opcao">
+    <input type="checkbox" name="confirma_sem_entradas" value="sim" required>
+    <span>
+      <span class="rotulo">Entendi, e quero seguir assim mesmo</span>
+      <span class="detalhe">Marque só se a rodada é de propósito sem as entradas do ERP.</span>
+    </span>
+  </label>
+</div>
+{% endif %}
+
 <div class="painel">
   <h2>Data da rodada</h2>
   <p class="ajuda">Vira o nome da coluna nova de sellout. A coluna da semana passada é congelada ao lado.</p>

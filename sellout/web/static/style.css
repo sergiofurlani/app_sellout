@@ -172,3 +172,8 @@ select:focus { outline: 2px solid var(--marca); outline-offset: -1px; }
 
 .opcional { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px dashed #d4d4d4; }
 .opcional .ajuda { margin: .4rem 0 0; font-size: .85rem; color: #666; line-height: 1.45; }
+
+/* Linha do resumo que não é um número a comemorar: zero entradas do ERP
+   significa Estoque inicial congelado, e isso não pode ter a mesma cor de
+   "3 fórmulas reajustadas". */
+li.aviso, li.aviso strong { color: var(--alerta); }

@@ -100,3 +100,23 @@ def test_produto_que_so_chegou_esta_semana(tmp_path):
                           "334099;0002;PRETO;24;24\n")
     acumulado, semana = carrega_entradas_erp(c)
     assert acumulado["334099"]["PRETO"] == semana["334099"]["PRETO"] == 24
+
+
+def _fontes(acumulado, semana):
+    from sellout.core.leitura import Fontes
+    f = Fontes()
+    f.entradas_erp, f.entradas_erp_semana = acumulado, semana
+    return f
+
+
+def test_diagnostico_separa_os_tres_estados():
+    """Ausente e antigo levam ao mesmo lugar — Estoque inicial congelado —,
+    mas exigem ações diferentes: um é gerar o arquivo, o outro é gerar de
+    novo com a versão atual do coletor. Confundir os dois manda a pessoa
+    procurar no lugar errado."""
+    from sellout.core.motor import diagnostico_entradas
+    assert diagnostico_entradas(_fontes({}, {}))["estado"] == "ausente"
+    assert diagnostico_entradas(_fontes({"334128": {"PRETO": 120}}, {}))["estado"] == "antigo"
+    d = diagnostico_entradas(_fontes({"334128": {"PRETO": 120}},
+                                     {"334128": {"PRETO": 12}}))
+    assert d["estado"] == "ok" and d["pecas_semana"] == 12

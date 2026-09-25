@@ -851,3 +851,46 @@ Os templates ganharam teste. Não tinham nenhum, e template quebra em produção
 não no `pytest`: um `{{ rel.producao }}` órfão só apareceria depois de uma
 rodada de minutos, como tela de erro no lugar do resultado. `tests/test_telas.py`
 renderiza as duas telas com `StrictUndefined`.
+
+## D19 · Rodada sem o `entradas-erp.csv` tem que gritar
+
+Efeito colateral da D18, que só apareceu quando o negócio perguntou pelo plano
+B: **tirar a produção tirou também a rede de segurança.**
+
+Antes, rodar sem o `entradas-erp.csv` ainda funcionava — a produção fazia o
+Estoque inicial crescer. Depois da D18, o incremento vem só da transferência.
+Sem o arquivo, ele é **zero**: a rodada termina sem erro nenhum e devolve uma
+planilha com o denominador congelado. O sellout sobe sozinho, e não há um
+número visivelmente errado em lugar nenhum.
+
+Processar calado, aqui, é pior do que recusar.
+
+São três estados, e dois são armadilha:
+
+| estado | o que acontece |
+|---|---|
+| `ok` | as duas colunas vieram; tudo cresce |
+| `antigo` | CSV sem `quant_semana` — **só produto novo** recebe peça |
+| `ausente` | nada cresce nesta rodada |
+
+O `antigo` é o mais traiçoeiro: o arquivo existe, tem 690 produtos e parece
+certo. A tela de revisão passa a mostrar um alerta nos dois casos, com uma
+confirmação obrigatória — marcar "quero seguir assim mesmo" é uma decisão, não
+um descuido. E o resultado diz, em vermelho, quando nenhuma linha recebeu peça.
+
+**A regra geral que isto ensina:** ao tirar uma fonte de dados, olhe para o que
+acontece quando a substituta não chega. A D18 trocou a produção pela
+transferência e fez o número certo; o que ela não fez foi cuidar do caso em que
+a transferência falta — e esse caso ficou pior do que era antes.
+
+### O plano B tinha nome e o perdeu
+
+O combinado era `main` = versão por planilha, o caminho de volta se a API não
+desse certo; `banco` = a versão nova. Os pushes de `banco:main` apagaram isso
+sem que ninguém decidisse: eu conferi que o push entrava sem conflito e não
+perguntei o que o `main` significava.
+
+Nada se perdeu — o `4fe74a0` continua dentro da história — mas ficou sem nome.
+A branch **`planilha`** aponta para ele de novo, e o serviço `sellout-banco`
+passa a acompanhá-la, para o plano B voltar a existir **rodando**, e não só
+como commit.
