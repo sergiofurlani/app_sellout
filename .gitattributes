@@ -1,0 +1,18 @@
+# Fim de linha: LF no repositorio, sempre.
+#
+# Os arquivos nasceram com CRLF (Windows) e passaram a chegar com LF, porque
+# sao gravados fora daqui. O git, sem regra, trata a troca como alteracao de
+# **todas** as linhas: um commit que mudou 30 linhas aparecia com 1.257, e
+# `git log -p` deixava de servir para ver o que mudou de verdade.
+#
+# text=auto eol=lf normaliza na entrada e entrega LF no checkout. Python,
+# HTML, SQL e CSV nao se importam; o Bloco de Notas do Windows tambem ja lida
+# com LF ha anos.
+* text=auto eol=lf
+
+# Binario nao se normaliza: converter CRLF dentro de um .xlsx o corrompe.
+*.xlsx binary
+*.xls  binary
+*.png  binary
+*.jpg  binary
+*.pdf  binary
