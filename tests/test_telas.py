@@ -134,3 +134,58 @@ def test_resultado_diz_quando_nada_cresceu(env):
         request=_Req(), job="x", rel=relatorio(entradas_semana=[]),
         decisoes={"data_sellout": "Sellout 21/09"}, banco=None)
     assert "nao cresceu" in html.replace("ã", "a").replace("ó", "o")
+
+
+def estado(**extra):
+    base = {"conectado": True, "razao": None, "aplicadas": [], "pendentes": [],
+            "avisos": []}
+    base.update(extra)
+    return base
+
+
+def test_banco_sem_conexao_nao_estoura(env):
+    """A tela do banco existe justamente para quando o banco não está de pé:
+    se ela mesma depender da conexão, não serve para nada."""
+    b = estado(conectado=False, razao="DATABASE_URL nao definida no ambiente")
+    html = env.get_template("banco.html").render(request=_Req(), b=b, feitas=None)
+    assert "Sem conexão com o banco" in html
+    assert "DATABASE_URL" in html
+
+
+def test_banco_lista_o_que_vai_rodar_antes_de_rodar(env):
+    """Botão que aplica migração sem dizer quais é pedir para alguém clicar no
+    escuro."""
+    b = estado(pendentes=[{"numero": 3, "nome": "movimento",
+                           "arquivo": "003_movimento.sql"}])
+    html = env.get_template("banco.html").render(request=_Req(), b=b, feitas=None)
+    assert "003_movimento.sql" in html
+    assert 'action="/banco/migrar"' in html
+
+
+def test_banco_em_dia_nao_mostra_botao(env):
+    html = env.get_template("banco.html").render(
+        request=_Req(), b=estado(), feitas=None)
+    assert "/banco/migrar" not in html
+    assert "Nenhuma" in html
+
+
+def test_banco_mostra_o_que_acabou_de_aplicar(env):
+    html = env.get_template("banco.html").render(
+        request=_Req(), b=estado(), feitas=["003_movimento.sql"])
+    assert "Aplicado agora" in html and "003_movimento.sql" in html
+
+
+def test_banco_avisa_migracao_que_mudou_depois_de_aplicada(env):
+    """Arquivo já aplicado que muda deixa dois bancos diferentes com o mesmo
+    número, e depois nada avisa."""
+    b = estado(avisos=["001_estrutura.sql mudou depois de aplicada"])
+    html = env.get_template("banco.html").render(request=_Req(), b=b, feitas=None)
+    assert "mudou de conteúdo" in html
+
+
+def test_index_renderiza_sem_a_chave_de_erro(env):
+    """`{% if erro %}` estourava aqui com StrictUndefined: em produção o Jinja
+    do FastAPI é tolerante e trata ausente como falso, mas depender disso é
+    contar com a sorte do modo padrão. `erro is defined and erro` funciona nos
+    dois."""
+    assert env.get_template("index.html").render(request=_Req())

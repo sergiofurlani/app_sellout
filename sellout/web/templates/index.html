@@ -2,7 +2,7 @@
 {% block subtitulo %}Passo 1 de 3 — enviar as planilhas{% endblock %}
 {% block conteudo %}
 
-{% if erro %}<div class="erro">{{ erro }}</div>{% endif %}
+{% if erro is defined and erro %}<div class="erro">{{ erro }}</div>{% endif %}
 
 <form method="post" action="/analisar" enctype="multipart/form-data"
       onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Analisando…'">
@@ -43,9 +43,12 @@
     <li>Cria a coluna nova de sellout e congela a semana anterior ao lado.</li>
     <li>Atualiza Estoque atual e soma as vendas de Jardins, Iguatemi e Site.</li>
     <li>Divide os códigos duplicados pelas cores escritas em vermelho na descrição.</li>
-    <li>Soma a produção no Estoque inicial e insere os produtos novos no bloco da coleção.</li>
+    <li>Soma ao Estoque inicial a transferência da Elena da semana e insere os
+        produtos novos no bloco da coleção.</li>
     <li>Refaz os subtotais de bloco e recalcula o Nível de Estoque pela aba Preco.</li>
   </ul>
 </div>
+
+<p class="ajuda" style="margin-top:18px"><a href="/banco">Estado do banco e migrações</a></p>
 
 {% endblock %}

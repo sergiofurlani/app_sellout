@@ -209,3 +209,57 @@ def baixar(job: str, qual: str):
         caminho, filename=ARQUIVOS[qual],
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+# --------------------------------------------------------------- banco
+
+def _estado_do_banco() -> dict:
+    """O que a tela do banco precisa saber, sem estourar se o banco estiver fora.
+
+    A tela **não pode** depender do banco estar de pé: é justamente quando ele
+    não está que alguém vem aqui olhar.
+    """
+    razao = db.por_que_nao()
+    if razao:
+        return {"conectado": False, "razao": razao, "aplicadas": [],
+                "pendentes": [], "avisos": []}
+    from sellout.db import migracoes
+    try:
+        falta, avisos = migracoes.pendentes()
+        return {"conectado": True, "razao": None,
+                "aplicadas": migracoes.versao(),
+                "pendentes": [{"numero": n, "nome": nm, "arquivo": c.name}
+                              for n, nm, c, _, _ in falta],
+                "avisos": avisos}
+    except Exception as e:                                     # noqa: BLE001
+        logging.exception("falha ao ler o estado do banco")
+        return {"conectado": False, "razao": "%s: %s" % (type(e).__name__, e),
+                "aplicadas": [], "pendentes": [], "avisos": []}
+
+
+@app.get("/banco", response_class=HTMLResponse)
+def banco(request: Request):
+    """Estado do banco e migrações pendentes.
+
+    As migrações **não** rodam sozinhas no deploy. Uma migração que falha no
+    pre-deploy derruba o app inteiro, e aí você perde as duas coisas de uma
+    vez — a mudança de esquema e o serviço no ar. Aqui elas rodam quando
+    alguém manda, olhando para a lista do que vai rodar.
+    """
+    return templates.TemplateResponse(
+        request, "banco.html", {"b": _estado_do_banco(), "feitas": None})
+
+
+@app.post("/banco/migrar", response_class=HTMLResponse)
+def migrar(request: Request):
+    from sellout.db import migracoes
+    try:
+        feitas = migracoes.aplicar()
+    except Exception as e:                                     # noqa: BLE001
+        logging.exception("falha ao aplicar migracoes")
+        return templates.TemplateResponse(
+            request, "banco.html",
+            {"b": _estado_do_banco(), "feitas": None,
+             "erro": "%s: %s" % (type(e).__name__, e)}, status_code=500)
+    return templates.TemplateResponse(
+        request, "banco.html", {"b": _estado_do_banco(), "feitas": feitas})

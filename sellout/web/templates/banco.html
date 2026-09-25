@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block titulo %}Banco{% endblock %}
+{% block conteudo %}
+
+<h1>Banco</h1>
+
+{% if erro is defined and erro %}
+<div class="painel alerta">
+  <h2>A migração falhou</h2>
+  <p class="ajuda"><code>{{ erro }}</code></p>
+  <p class="ajuda">Cada migração roda dentro da sua própria transação: a que
+    falhou não deixou nada pela metade. As anteriores, se houver, já valem.</p>
+</div>
+{% endif %}
+
+{% if feitas is not none %}
+<div class="painel">
+  <h2>Aplicado agora</h2>
+  {% if feitas %}
+  <ul class="avisos">
+    {% for f in feitas %}<li>{{ f }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="ajuda">Nada a aplicar — o banco já estava em dia.</p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if not b.conectado %}
+<div class="painel alerta">
+  <h2>Sem conexão com o banco</h2>
+  <p class="ajuda"><code>{{ b.razao }}</code></p>
+  <p class="ajuda">O app continua funcionando por planilha: a rodada não
+    depende do banco. O que não acontece, enquanto isto durar, é a gravação do
+    retrato da semana.</p>
+</div>
+{% else %}
+
+{% if b.avisos %}
+<div class="painel alerta">
+  <h2>Migração aplicada que mudou de conteúdo</h2>
+  <ul class="avisos">
+    {% for a in b.avisos %}<li>{{ a }}</li>{% endfor %}
+  </ul>
+  <p class="ajuda">Um arquivo já aplicado que muda deixa dois bancos diferentes
+    com o mesmo número, e nada avisa depois. Quem corrige é a migração
+    seguinte, nunca a edição da que já rodou.</p>
+</div>
+{% endif %}
+
+<div class="painel">
+  <h2>Pendentes <span class="chip">{{ b.pendentes|length }}</span></h2>
+  {% if b.pendentes %}
+  <p class="ajuda">Estas vão rodar, nesta ordem, cada uma na sua transação:</p>
+  <table>
+    <tr><th class="num">#</th><th>Arquivo</th></tr>
+    {% for m in b.pendentes %}
+    <tr><td class="num">{{ m.numero }}</td><td><code>{{ m.arquivo }}</code></td></tr>
+    {% endfor %}
+  </table>
+  <form method="post" action="/banco/migrar" class="acoes">
+    <button type="submit">Aplicar {{ b.pendentes|length }} migração(ões)</button>
+  </form>
+  {% else %}
+  <p class="ajuda">Nenhuma. O banco está na versão do código que está no ar.</p>
+  {% endif %}
+</div>
+
+<div class="painel">
+  <h2>Já aplicadas <span class="chip">{{ b.aplicadas|length }}</span></h2>
+  <table>
+    <tr><th class="num">#</th><th>Nome</th><th>Checksum</th><th>Quando</th></tr>
+    {% for m in b.aplicadas %}
+    <tr>
+      <td class="num">{{ m.numero }}</td>
+      <td>{{ m.nome }}</td>
+      <td><code>{{ m.checksum }}</code></td>
+      <td>{{ m.aplicada_em }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<p class="ajuda"><a href="/">Voltar</a></p>
+{% endblock %}

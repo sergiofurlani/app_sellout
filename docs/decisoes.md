@@ -894,3 +894,42 @@ Nada se perdeu — o `4fe74a0` continua dentro da história — mas ficou sem no
 A branch **`planilha`** aponta para ele de novo, e o serviço `sellout-banco`
 passa a acompanhá-la, para o plano B voltar a existir **rodando**, e não só
 como commit.
+
+## D20 · Migração roda quando alguém manda, não no deploy
+
+O `sellout-banco` tinha `preDeployCommand: python -m sellout.db.migracoes`
+configurado — migração automática a cada publicação. Parece a prática certa, e
+é a mais comum, mas tem um custo que só aparece no pior dia: **uma migração que
+falha no pre-deploy derruba o app inteiro.** Perde-se a mudança de esquema e o
+serviço no ar de uma vez, e o que sobra é uma tela de erro para quem só queria
+rodar a semana.
+
+Decidido pelo negócio em 25/09: *"não precisa rodar sozinha, roda quando for
+chamado via app"*.
+
+A tela `/banco` mostra o estado e aplica sob comando:
+
+- **lista o que vai rodar antes de rodar** — botão que aplica migração sem
+  dizer quais é pedir para alguém clicar no escuro;
+- **abre mesmo com o banco fora do ar**, porque é exatamente aí que alguém vem
+  olhar. Se ela dependesse da conexão, não serviria quando é necessária;
+- **não oferece o botão quando não há o que aplicar**, nem quando não dá para
+  conectar: botão que só pode dar erro é pior do que botão nenhum;
+- **avisa sobre migração aplicada que mudou de conteúdo** — dois bancos com o
+  mesmo número e nada acusando depois.
+
+Cada migração continua rodando na sua própria transação: a que falhar não
+deixa nada pela metade, e as anteriores valem.
+
+**O `preDeployCommand` do `sellout-banco` foi removido** — e por um motivo a
+mais: esse serviço agora roda a branch `planilha`, que não tem o módulo
+`sellout/db`. O comando teria derrubado o plano B no primeiro deploy, o que é
+pior do que não ter plano B, porque parece que tem.
+
+### Um `{% if %}` que só funcionava por sorte
+
+Ao testar a tela nova apareceu `{% if erro %}` com variável não passada. Em
+produção isso funciona — o Jinja do FastAPI trata ausente como falso —, mas é
+contar com a tolerância do modo padrão. Virou `{% if erro is defined and erro %}`,
+que vale nos dois. Os testes renderizam com `StrictUndefined` justamente para
+que esse tipo de coisa apareça aqui, e não numa sexta à noite.
