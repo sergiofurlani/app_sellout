@@ -136,15 +136,13 @@ async def analisar(request: Request, geral: UploadFile, classicos: UploadFile,
 
 
 @app.post("/processar", response_class=HTMLResponse)
-async def processar(request: Request, job: str = Form(...), data_sellout: str = Form(...),
-                    producao_exige_estoque: str = Form("nao")):
+async def processar(request: Request, job: str = Form(...), data_sellout: str = Form(...)):
     pasta = _pasta(job)
     form = await request.form()
 
     decisoes = {
         "data_sellout": data_sellout.strip() or motor.rotulo_sellout(),
         "filiais_estoque": form.getlist("filial"),
-        "producao_exige_estoque": producao_exige_estoque == "sim",
         "novos": form.getlist("novo"),
         "duplicados": {
             k[len("dup:"):]: v for k, v in form.items()

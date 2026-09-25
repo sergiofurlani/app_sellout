@@ -78,17 +78,6 @@
 </div>
 {% endif %}
 
-<div class="painel">
-  <h2>Regra da produção</h2>
-  <label class="opcao">
-    <input type="checkbox" name="producao_exige_estoque" value="sim" checked>
-    <span>
-      <span class="rotulo">Só somar produção se o produto tiver estoque atual</span>
-      <span class="detalhe">Desmarcado, a produção entra no Estoque inicial mesmo com estoque zerado.</span>
-    </span>
-  </label>
-</div>
-
 {% if a.duplicados_pendentes %}
 <div class="painel">
   <h2>Códigos duplicados sem divisão definida <span class="chip">{{ a.duplicados_pendentes|length }}</span></h2>
@@ -136,7 +125,7 @@
         <span class="rotulo">{{ n.codigo }} — {{ n.descricao }}</span>
         <span class="detalhe">
           {%- if n.aba %}{{ n.aba }} · {{ n.colecao }}{% else %}sem Divisão preenchida na aba Produtos{% endif %}
-          · estoque {{ n.estoque }} · vendas {{ n.vendas }} · produção {{ n.producao }}</span>
+          · estoque {{ n.estoque }} · vendas {{ n.vendas }} · entrada ERP {{ n.entrada }}</span>
       </span>
     </label>
     {% endfor %}
@@ -153,8 +142,6 @@
         <td class="num">{{ a.duplicados_resolvidos|length }}</td></tr>
     <tr><td>Filiais encontradas na aba Vendas</td>
         <td class="num">{{ a.filiais_vendas|join(', ') }}</td></tr>
-    <tr><td>Produção de códigos fora da aba Produtos</td>
-        <td class="num">{{ a.producao_sem_destino|sum(attribute='qtde') }} pç</td></tr>
   </table>
 </div>
 

@@ -20,7 +20,6 @@ def decisoes_padrao(analise: dict) -> dict:
     return {
         "data_sellout": analise["data_sugerida"],
         "filiais_estoque": analise["filiais_estoque"],
-        "producao_exige_estoque": True,
         "novos": [n["codigo"] for n in analise["novos_candidatos"]
                   if n["estoque"] > 0 and n["aba"]],
         "duplicados": {d["chave"]: "manter" for d in analise["duplicados_pendentes"]},

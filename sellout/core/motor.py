@@ -125,8 +125,11 @@ def analisar(caminho_geral, caminho_classicos, entradas_erp=None) -> dict:
             continue
         estoque = sum(fontes.estoque.get(cod, {}).values())
         vendas = sum(sum(d.values()) for d in fontes.vendas.get(cod, {}).values())
-        producao = sum(fontes.producao.get(cod, {}).values())
-        if not (estoque or vendas or producao):
+        # D18: a produção deixou de contar. Produto que só existe na aba
+        # Producao ainda não chegou na loja — entrava como candidato e nascia
+        # com Estoque inicial de peça que ninguém podia vender.
+        entrada = sum(fontes.entradas_erp.get(cod, {}).values())
+        if not (estoque or vendas or entrada):
             continue
         divisao_txt = prod["divisao"] or ""
         novos.append({
@@ -137,15 +140,9 @@ def analisar(caminho_geral, caminho_classicos, entradas_erp=None) -> dict:
                    ("Feminino" if "FEMININO" in divisao_txt.upper() else None),
             "estoque": estoque,
             "vendas": vendas,
-            "producao": producao,
+            "entrada": entrada,
         })
     novos.sort(key=lambda x: (x["aba"] or "zz", x["codigo"]))
-
-    producao_sem_destino = [
-        {"codigo": c, "qtde": sum(d.values())}
-        for c, d in sorted(fontes.producao.items())
-        if c not in existentes and c not in {n["codigo"] for n in novos}
-    ]
 
     return {
         "filiais_estoque": fontes.filiais_estoque,
@@ -153,7 +150,6 @@ def analisar(caminho_geral, caminho_classicos, entradas_erp=None) -> dict:
         "duplicados_pendentes": pendentes,
         "duplicados_resolvidos": resolvidos,
         "novos_candidatos": novos,
-        "producao_sem_destino": producao_sem_destino,
         "avisos": fontes.avisos,
         "colunas_usadas": fontes.colunas_usadas,
         "valores_ignorados": fontes.valores_ignorados[:50],
@@ -173,14 +169,13 @@ def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos,
                             colunas_forcadas=decisoes.get("colunas"),
                             entradas_erp=entradas_erp)
     rotulo_data = decisoes.get("data_sellout") or rotulo_sellout()
-    exige_estoque_prod = decisoes.get("producao_exige_estoque", True)
     aprovados = set(decisoes.get("novos") or [])
     escolhas = decisoes.get("duplicados") or {}
 
     rel = {
-        "alterados": 0, "novos_inseridos": [], "por_cor": [], "producao": [],
-        "producao_nao_aplicada": [], "mantidos": [], "pendentes": [],
-        "estoque_inicial_novos": [],
+        "alterados": 0, "novos_inseridos": [], "por_cor": [],
+        "mantidos": [], "pendentes": [],
+        "estoque_inicial_novos": [], "entradas_semana": [],
         "nao_encontrados": [], "sem_cores": [], "cores_sem_destino": [], "sem_preco": [],
         "formulas_ajustadas": [], "nivel": {},
         "avisos": list(fontes.avisos),
@@ -211,24 +206,14 @@ def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos,
     for lista in novos_por_aba.values():
         lista.sort(key=lambda x: x["codigo"])
 
-    usados_producao = set()
     for planilha, saida in planilhas:
-        _processar_planilha(planilha, fontes, rotulo_data, exige_estoque_prod,
-                            escolhas, novos_por_aba, usados_producao, rel)
+        _processar_planilha(planilha, fontes, rotulo_data,
+                            escolhas, novos_por_aba, rel)
         planilha.formulas.save(saida)
-
-    rel["producao_sem_destino"] = [
-        {"codigo": c, "qtde": sum(d.values())}
-        for c, d in sorted(fontes.producao.items())
-        if c not in usados_producao and c not in {
-            x["codigo"] for x in rel["producao_nao_aplicada"]
-        }
-    ]
     return rel
 
 
-def _processar_planilha(p, fontes, rotulo_data, exige_estoque_prod,
-                        escolhas, novos_por_aba, usados_producao, rel):
+def _processar_planilha(p, fontes, rotulo_data, escolhas, novos_por_aba, rel):
     nivel = {}
     for aba in ABAS_TRABALHO:
         ws = p.formulas[aba]
@@ -331,7 +316,6 @@ def _processar_planilha(p, fontes, rotulo_data, exige_estoque_prod,
             d = destino.get(r)
             cores_est = fontes.estoque.get(cod, {})
             cores_ven = fontes.vendas.get(cod, {})
-            cores_pro = fontes.producao.get(cod, {})
             codigos_da_aba.add(cod)
             if d in (divisao.MANTER, divisao.PENDENTE):
                 ws.cell(r, 1).value = MARCAS_COLUNA_A["manter" if d == divisao.MANTER else "pendente"]
@@ -340,7 +324,6 @@ def _processar_planilha(p, fontes, rotulo_data, exige_estoque_prod,
             qtd_est = sum(cores_est.get(c, 0) for c in filtro)
             tem_est = any(c in cores_est for c in filtro)
             tem_ven = any(c in cores_ven for c in filtro)
-            qtd_prod = sum(cores_pro.get(c, 0) for c in filtro)
             cores_erp = fontes.entradas_erp.get(cod, {})
             qtd_erp = sum(cores_erp.get(c, 0) for c in filtro)
 
@@ -357,8 +340,6 @@ def _processar_planilha(p, fontes, rotulo_data, exige_estoque_prod,
                 ws.cell(r, 1).value = MARCAS_COLUNA_A["estoque"]
             elif tem_ven:
                 ws.cell(r, 1).value = MARCAS_COLUNA_A["vendas"]
-            elif qtd_prod:
-                ws.cell(r, 1).value = MARCAS_COLUNA_A["producao"]
             elif isinstance(d, set):
                 # Linha de um código dividido que não ficou com nenhuma cor:
                 # o estoque foi todo para a linha irmã. Zera o Estoque atual
@@ -387,22 +368,21 @@ def _processar_planilha(p, fontes, rotulo_data, exige_estoque_prod,
                 # inteira na Elena, varejo e atacado juntos; só parte vira
                 # estoque de loja. Aqui o número NASCE — é a única hora em que
                 # dá para acertá-lo sem mexer em histórico.
+                # D18: a produção saiu daqui também. Ela chega inteira na
+                # Elena e só parte vira loja, então usá-la como reserva
+                # inflava o denominador de um produto que ainda nem foi
+                # despachado. Sem entrada do ERP, o que se sabe do produto é
+                # o que ele tem em loja mais o que já vendeu.
                 if qtd_erp > 0:
                     inicial, origem = qtd_erp, "ERP"
                 else:
-                    inicial, origem = max(qtd_prod, qtd_est + qtd_ven), "produção"
+                    inicial, origem = qtd_est + qtd_ven, "estoque + vendas"
                 ws.cell(r, col_inicial).value = inicial
                 rel["estoque_inicial_novos"].append({
                     "planilha": p.rotulo, "aba": aba, "linha": r, "codigo": cod,
                     "descricao": ws.cell(r, 3).value, "origem": origem,
-                    "valor": inicial, "erp": qtd_erp, "producao": qtd_prod,
+                    "valor": inicial, "erp": qtd_erp,
                     "estoque_mais_vendas": qtd_est + qtd_ven})
-                if qtd_prod:
-                    usados_producao.add(cod)
-                    rel["producao"].append({
-                        "planilha": p.rotulo, "aba": aba, "linha": r, "codigo": cod,
-                        "descricao": ws.cell(r, 3).value, "qtde": qtd_prod,
-                        "obs": "linha nova — já no Estoque inicial"})
                 rel["alterados"] += 1
                 continue
 
@@ -412,26 +392,34 @@ def _processar_planilha(p, fontes, rotulo_data, exige_estoque_prod,
                 anterior = ws.cell(r, col).value
                 ws.cell(r, col).value = (anterior + q) if isinstance(anterior, (int, float)) else q
 
-            if qtd_prod and exige_estoque_prod and qtd_est <= 0:
-                rel["producao_nao_aplicada"].append({
-                    "planilha": p.rotulo, "aba": aba, "linha": r, "codigo": cod,
-                    "descricao": cache_desc.get(original.get(r)), "qtde": qtd_prod,
-                    "motivo": "linha sem estoque atual"})
-                qtd_prod = 0
-            if qtd_prod:
+            # D18: o incremento semanal do Estoque inicial é a transferência da
+            # Elena, não a produção.
+            #
+            # A produção fazia este papel desde sempre — é a origem das
+            # fórmulas `=86-1+44-2`, uma semana empilhada na outra. Mas a
+            # produção chega **inteira na Elena**, varejo e atacado juntos, e
+            # só parte dela vira estoque de loja (D13). O que entra na loja é a
+            # transferência, e é ela que deve crescer o denominador.
+            #
+            # **A janela é a da rodada, não a da extração.** `entradas_erp`
+            # traz o acumulado, que é o número certo para a linha nova e
+            # errado para esta: somá-lo toda semana dobraria o Estoque inicial
+            # sozinho. Por isso aqui é `entradas_erp_semana`.
+            incremento = sum(fontes.entradas_erp_semana.get(cod, {}).get(c, 0)
+                             for c in filtro)
+            if incremento:
                 anterior = ws.cell(r, col_inicial).value
-                sufixo = ("+%d" % qtd_prod) if qtd_prod > 0 else ("%d" % qtd_prod)
+                sufixo = ("+%d" % incremento) if incremento > 0 else ("%d" % incremento)
                 if isinstance(anterior, str) and anterior.startswith("="):
                     ws.cell(r, col_inicial).value = anterior + sufixo
                 elif isinstance(anterior, (int, float)) and anterior:
                     ws.cell(r, col_inicial).value = "=%s%s" % (anterior, sufixo)
                 else:
-                    ws.cell(r, col_inicial).value = qtd_prod
-                usados_producao.add(cod)
-                rel["producao"].append({
+                    ws.cell(r, col_inicial).value = incremento
+                rel["entradas_semana"].append({
                     "planilha": p.rotulo, "aba": aba, "linha": r, "codigo": cod,
-                    "descricao": cache_desc.get(original.get(r)), "qtde": qtd_prod,
-                    "obs": "somada ao Estoque inicial"})
+                    "descricao": cache_desc.get(original.get(r)), "qtde": incremento,
+                    "obs": "transferencia da semana, somada ao Estoque inicial"})
             rel["alterados"] += 1
 
         _ajustar_somatorias(ws, p.rotulo, aba, col_atual, col_sellout, col_total, col_inicial, rel)

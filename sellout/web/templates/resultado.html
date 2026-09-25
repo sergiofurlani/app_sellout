@@ -18,7 +18,7 @@
     <li><strong>{{ rel.alterados }}</strong>linhas atualizadas</li>
     <li><strong>{{ rel.novos_inseridos|length }}</strong>produtos novos</li>
     <li><strong>{{ rel.por_cor|length }}</strong>linhas divididas por cor</li>
-    <li><strong>{{ rel.producao|length }}</strong>lançamentos de produção</li>
+    <li><strong>{{ rel.entradas_semana|length }}</strong>entradas do ERP no Estoque inicial</li>
     <li><strong>{{ rel.formulas_ajustadas|length }}</strong>fórmulas reajustadas</li>
   </ul>
 </div>
@@ -39,8 +39,7 @@
 </div>
 
 {% set pendentes = rel.mantidos|length + rel.pendentes|length + rel.nao_encontrados|length
-                   + rel.cores_sem_destino|length + rel.producao_nao_aplicada|length
-                   + rel.producao_sem_destino|length %}
+                   + rel.cores_sem_destino|length %}
 {% if pendentes %}
 <div class="painel">
   <h2>Ficou para conferir <span class="chip">{{ pendentes }}</span></h2>
@@ -51,8 +50,6 @@
     {% if rel.pendentes %}<tr><td>Linhas marcadas como REVISAR</td><td class="num">{{ rel.pendentes|length }}</td></tr>{% endif %}
     {% if rel.nao_encontrados %}<tr><td>Códigos sem nenhum dado nas abas de origem</td><td class="num">{{ rel.nao_encontrados|length }}</td></tr>{% endif %}
     {% if rel.cores_sem_destino %}<tr><td>Cores sem linha de destino</td><td class="num">{{ rel.cores_sem_destino|length }}</td></tr>{% endif %}
-    {% if rel.producao_nao_aplicada %}<tr><td>Produção não somada por falta de estoque</td><td class="num">{{ rel.producao_nao_aplicada|sum(attribute='qtde') }} pç</td></tr>{% endif %}
-    {% if rel.producao_sem_destino %}<tr><td>Produção de produtos fora desta rodada</td><td class="num">{{ rel.producao_sem_destino|sum(attribute='qtde') }} pç</td></tr>{% endif %}
     {% if rel.sem_preco %}<tr><td>Itens sem preço exato na aba Preco</td><td class="num">{{ rel.sem_preco|length }}</td></tr>{% endif %}
   </table>
 </div>

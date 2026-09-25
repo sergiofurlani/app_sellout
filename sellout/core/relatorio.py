@@ -32,7 +32,7 @@ def gerar(rel: dict, destino: str) -> str:
         ["Linhas atualizadas", rel.get("alterados", 0)],
         ["Produtos novos inseridos", len(rel.get("novos_inseridos", []))],
         ["Linhas divididas por cor", len(rel.get("por_cor", []))],
-        ["Lançamentos de produção aplicados", len(rel.get("producao", []))],
+        ["Entradas do ERP somadas ao Estoque inicial", len(rel.get("entradas_semana", []))],
         ["Fórmulas de bloco ajustadas", len(rel.get("formulas_ajustadas", []))],
         ["Linhas mantidas sem alteração", len(rel.get("mantidos", []))],
         ["Linhas marcadas para revisar", len(rel.get("pendentes", []))],
@@ -51,17 +51,15 @@ def gerar(rel: dict, destino: str) -> str:
           for d in rel.get("novos_inseridos", [])],
          [12, 12, 22, 8, 12, 45])
 
-    _aba(wb, "Producao aplicada",
+    # D18: onde era "Producao aplicada". O incremento semanal do Estoque
+    # inicial passou a ser a transferência da Elena; a produção continua lida
+    # e gravada no banco, para o sellout do Atacado, mas não mexe em número
+    # nenhum do varejo.
+    _aba(wb, "Entradas do ERP",
          ["Planilha", "Aba", "Linha", "Código", "Descrição", "Qtde", "Observação"],
          [[d["planilha"], d["aba"], d["linha"], d["codigo"], d["descricao"], d["qtde"], d.get("obs", "")]
-          for d in rel.get("producao", [])],
+          for d in rel.get("entradas_semana", [])],
          [12, 12, 8, 12, 45, 10, 38])
-
-    nao_aplicada = [[d["codigo"], d["qtde"], d.get("motivo", "")]
-                    for d in rel.get("producao_nao_aplicada", [])]
-    nao_aplicada += [[d["codigo"], d["qtde"], "produto não incluído nesta rodada"]
-                     for d in rel.get("producao_sem_destino", [])]
-    _aba(wb, "Producao nao aplicada", ["Código", "Qtde", "Situação"], nao_aplicada, [14, 10, 48])
 
     _aba(wb, "Divisao por cor",
          ["Planilha", "Aba", "Linha", "Código", "Descrição", "Texto em vermelho", "Cores atribuídas"],

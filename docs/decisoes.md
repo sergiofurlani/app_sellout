@@ -791,3 +791,63 @@ cair ele recusa o arquivo. Era a metade da integridade que ninguém media.
 devolve *quase* o mesmo arquivo, e o que ela perde no caminho não aparece na
 tela. Quando só uma parte precisa mudar, trocar só aquela parte é mais seguro
 do que reescrever tudo — mesmo custando mais código.
+
+## D18 · A produção sai do Estoque inicial; quem cresce o denominador é a transferência
+
+A produção fazia **duas** coisas no Estoque inicial, e só uma estava à vista:
+
+```python
+# linha nova      -> nascia do ERP (D14); a produção era reserva
+# linha existente -> a produção era SOMADA toda semana
+ws.cell(r, col_inicial).value = anterior + "+%d" % qtd_prod
+```
+
+O segundo caso é a origem das fórmulas `=86-1+44-2`: cada rodada empilhava a
+produção da semana no denominador. Mas a produção **chega inteira na Elena**,
+varejo e atacado juntos, e só parte vira estoque de loja (D13). O que entra na
+loja é a transferência — e é ela que deve crescer o Estoque inicial.
+
+Decidido pelo negócio em 25/09: *"a produção deve ser substituída pela
+transferência. Quando formos fazer o sellout do Atacado, aí sim precisaremos
+da produção. Nesse momento ela só confunde e eventualmente duplica as
+entradas."*
+
+### Duas janelas do mesmo evento
+
+O ponto que torna isto perigoso: são **dois números diferentes** da mesma
+extração.
+
+| linha | recebe | janela |
+|---|---|---|
+| nova | tudo que já chegou daquele produto | desde o início da coleção |
+| que já existe | só o que chegou nesta semana | segunda a domingo |
+
+O `entradas-erp.csv` trazia um número só — o acumulado. Somá-lo numa linha
+existente a cada rodada dobraria o Estoque inicial sozinho, e o sellout cairia
+pela metade sem ninguém entender por quê. O CSV passa a ter as duas colunas,
+de uma rodada só do coletor:
+
+```
+codigo;codigo_cor;cor;quant;quant_semana
+334128;0002;0002 - PRETO;120;12
+```
+
+`quant_semana` **ausente vale zero**, nunca `quant`: um CSV do formato antigo
+deixa de incrementar — que é visível — em vez de inflar — que não é.
+
+### O que saiu e o que ficou
+
+Saiu: a D5 (produção só entra com estoque), a caixa "Regra da produção" na tela
+de revisão, a marcação `PRODUÇÃO` na coluna A, a produção como reserva do
+produto novo (agora é `estoque + vendas`) e as abas de produção no relatório.
+
+**Ficou:** a leitura da aba Producao e a gravação dela no banco. Ela não mexe
+em nenhum número do varejo, e está lá esperando o sellout do Atacado — que é
+onde a produção é a fonte certa.
+
+### Efeito colateral bom
+
+Os templates ganharam teste. Não tinham nenhum, e template quebra em produção,
+não no `pytest`: um `{{ rel.producao }}` órfão só apareceria depois de uma
+rodada de minutos, como tela de erro no lugar do resultado. `tests/test_telas.py`
+renderiza as duas telas com `StrictUndefined`.

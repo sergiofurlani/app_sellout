@@ -156,6 +156,33 @@ def sanidade(liquido: float, de: date, ate: date) -> list[str]:
     return linhas
 
 
+def segunda_da_semana(ate: date) -> date:
+    """A segunda-feira da semana que termina em `ate`.
+
+    O incremento semanal do Estoque inicial precisa da janela da rodada, não
+    da janela inteira da extração — e as duas saem da mesma leitura.
+    """
+    return ate - timedelta(days=ate.weekday())
+
+
+def grava_para_app(caminho: str, total, semana) -> int:
+    """O CSV que o app lê: uma linha por produto+cor, com as duas janelas."""
+    agregado = defaultdict(lambda: [0.0, 0.0])
+    for (cod, cod_cor, cor, _loja), q in total.items():
+        agregado[(cod, cod_cor, cor)][0] += q
+    for (cod, cod_cor, cor, _loja), q in semana.items():
+        agregado[(cod, cod_cor, cor)][1] += q
+
+    linhas = [(c, cc, cor, t, s) for (c, cc, cor), (t, s) in sorted(agregado.items())
+              if t or s]
+    with open(caminho, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f, delimiter=";")
+        w.writerow(["codigo", "codigo_cor", "cor", "quant", "quant_semana"])
+        for cod, cod_cor, cor, t, s in linhas:
+            w.writerow([cod, cod_cor, cor, f"{t:g}", f"{s:g}"])
+    return len(linhas)
+
+
 def saldo_por_loja(registros):
     """Quanto cada loja ganhou de estoque, por produto+cor.
 
@@ -186,9 +213,16 @@ def main(argv=None):
                         "                         incluir hoje traz um dia pela metade.")
     p.add_argument("-s", "--salvar", help="grava o detalhe por item num CSV")
     p.add_argument("--para-app", metavar="ARQUIVO",
-                   help="CSV agregado que o app le: codigo;codigo_cor;cor;quant")
+                   help="CSV que o app le: codigo;codigo_cor;cor;quant;quant_semana")
+    p.add_argument("--semana", type=dia, default=None,
+                   help="primeiro dia da janela do incremento semanal.\n"
+                        "                         padrao: a segunda-feira de --ate. A coluna\n"
+                        "                         quant_semana e o que entra na linha que ja\n"
+                        "                         existe; quant e o acumulado, para a nova.")
     p.add_argument("--sem-cache", action="store_true")
     args = p.parse_args(argv)
+    if args.semana is None:
+        args.semana = max(segunda_da_semana(args.ate), args.de)
 
     mn.USAR_CACHE = not args.sem_cache
     registros = coleta(args.de, args.ate)
@@ -241,18 +275,21 @@ def main(argv=None):
         print(f'    {cod:10} {cod_cor:>5} {cor[:18]:18} {q:>7,.0f}')
 
     if args.para_app:
-        # Formato que sellout.core.leitura.carrega_entradas_erp espera. Uma
-        # linha por produto+cor, ja liquido de devolucao e realocacao.
-        with open(args.para_app, "w", newline="", encoding="utf-8-sig") as f:
-            w = csv.writer(f, delimiter=";")
-            w.writerow(["codigo", "codigo_cor", "cor", "quant"])
-            agregado = defaultdict(float)
-            for (cod, cod_cor, cor, _loja), q in saldo.items():
-                agregado[(cod, cod_cor, cor)] += q
-            for (cod, cod_cor, cor), q in sorted(agregado.items()):
-                if q:
-                    w.writerow([cod, cod_cor, cor, f"{q:g}"])
-        print(f"\n  Para o app: {args.para_app}")
+        # Duas janelas do mesmo evento, porque sao duas perguntas diferentes:
+        #
+        #   quant         tudo que ja chegou  -> Estoque inicial da linha NOVA
+        #   quant_semana  o que chegou agora  -> incremento da linha que JA EXISTE
+        #
+        # Somar o acumulado de nove meses numa linha existente toda semana
+        # dobraria o denominador sozinho. Era o risco desta mudanca, e e por
+        # isso que as duas colunas saem juntas, de uma rodada so.
+        semana = saldo_por_loja([r for r in registros
+                                 if r["data"] and args.semana <= r["data"] <= args.ate])
+        n = grava_para_app(args.para_app, saldo, semana)
+        print(f"\n  Para o app: {args.para_app}  ({n} linha(s))")
+        print(f"    quant        acumulado de {args.de} a {args.ate}")
+        print(f"    quant_semana so de {args.semana} a {args.ate}"
+              f"  ({sum(semana.values()):,.0f} peca(s))")
 
     if args.salvar:
         with open(args.salvar, "w", newline="", encoding="utf-8-sig") as f:

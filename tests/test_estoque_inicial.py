@@ -46,7 +46,7 @@ def test_janela_de_um_dia_nao_divide_por_zero():
 
 def _doc(origem, destino, quant=10, codigo="334128"):
     return {"cod_filial": origem, "cod_cliente": destino,
-            "data_emissao": "2026-09-15T00:00:00",
+            "data_emissao": "/Date(1789430400000ms)/".replace("ms", "-0180"),
             "itens": [{"cod_produto": codigo, "cod_cor": "0002",
                        "desc_cor": "0002 - PRETO", "tamanho": "38",
                        "quant": quant, "total": 100.0 * quant}]}
@@ -66,7 +66,7 @@ def test_main_vai_ate_o_fim_e_grava(tmp_path, monkeypatch, capsys):
     saida = capsys.readouterr().out
     assert "ordem de grandeza" in saida
     linhas = destino.read_text(encoding="utf-8-sig").splitlines()
-    assert linhas[1].endswith(";6")   # 10 que entraram menos 4 que voltaram
+    assert linhas[1].endswith(";6;6"), "acumulado e semana: tudo caiu na mesma janela"
 
 
 def test_main_sem_movimento_avisa_em_vez_de_gravar(tmp_path, monkeypatch):
@@ -88,3 +88,34 @@ def test_o_207_sai_do_estoque_como_qualquer_devolucao(monkeypatch):
     ])
     saldo = ei.saldo_por_loja(ei.coleta(date(2026, 9, 1), date(2026, 9, 20)))
     assert sum(saldo.values()) == 7
+
+
+def test_a_janela_da_semana_e_um_recorte_da_extracao():
+    """A segunda-feira sai do fim da janela, não de hoje: rodar a extração na
+    quarta não pode mudar o que conta como 'esta semana'."""
+    assert ei.segunda_da_semana(date(2026, 9, 20)) == date(2026, 9, 14)
+    assert ei.segunda_da_semana(date(2026, 9, 14)) == date(2026, 9, 14)
+
+
+def test_o_acumulado_e_a_semana_sao_numeros_diferentes(tmp_path):
+    """Nove meses de transferência e a semana da rodada, no mesmo arquivo.
+
+    Se os dois fossem o mesmo número, somar na linha existente toda semana
+    dobraria o Estoque inicial — o defeito que esta separação existe para
+    impedir.
+    """
+    total = {("334128", "0002", "PRETO", "EGREY JDS"): 120.0}
+    semana = {("334128", "0002", "PRETO", "EGREY JDS"): 12.0}
+    destino = tmp_path / "e.csv"
+    assert ei.grava_para_app(str(destino), total, semana) == 1
+    linha = destino.read_text(encoding="utf-8-sig").splitlines()[1]
+    assert linha.endswith(";120;12")
+
+
+def test_produto_sem_movimento_na_semana_sai_com_zero(tmp_path):
+    """Ele continua no arquivo por causa do acumulado — a linha nova precisa
+    dele —, mas não incrementa nada em quem já tem linha."""
+    total = {("334128", "0002", "PRETO", "EGREY JDS"): 120.0}
+    destino = tmp_path / "e.csv"
+    ei.grava_para_app(str(destino), total, {})
+    assert destino.read_text(encoding="utf-8-sig").splitlines()[1].endswith(";120;0")

@@ -105,6 +105,10 @@ class Fontes:
     # cod -> cor normalizada -> quantidade. Vazio quando o arquivo não veio:
     # aí vale a regra antiga (D6), e o relatório diz qual foi usada.
     entradas_erp: dict = field(default_factory=dict)
+    # A mesma coisa, mas só da janela da rodada. A linha nova recebe o
+    # acumulado; a que já existe recebe **isto**, senão o denominador dobra a
+    # cada semana. As duas colunas vêm do mesmo CSV (D18).
+    entradas_erp_semana: dict = field(default_factory=dict)
 
     def eh_cor_conhecida(self, nome) -> bool:
         """O nome aparece como cor em alguma aba de origem?
@@ -329,18 +333,28 @@ def abas_faltando(caminho) -> list[str]:
     return faltando
 
 
-def carrega_entradas_erp(caminho) -> dict:
-    """Lê o CSV que o coletor gera: codigo;codigo_cor;cor;quant.
+def carrega_entradas_erp(caminho) -> tuple[dict, dict]:
+    """Lê o CSV do coletor: codigo;codigo_cor;cor;quant;quant_semana.
 
     É a ponte entre as duas metades do sistema. O MN só responde dentro da
     rede da Egrey, então o app na nuvem nunca vai buscar isto sozinho: o
     coletor puxa lá e o arquivo sobe junto com as planilhas.
 
-    Sem o arquivo, `entradas_erp` fica vazio e tudo segue como antes.
+    Devolve **duas** leituras do mesmo arquivo, porque são duas perguntas:
+
+        total    tudo que já chegou   -> Estoque inicial do produto novo
+        semana   o que chegou agora   -> incremento de quem já tem linha
+
+    Somar o acumulado numa linha existente toda semana dobraria o denominador.
+    Por isso `quant_semana` ausente vale **zero**, e não `quant`: um CSV antigo
+    deixa de incrementar (o relatório avisa), em vez de inflar calado.
+
+    Sem o arquivo, os dois ficam vazios e tudo segue como antes.
     """
     import csv
 
     entradas = defaultdict(lambda: defaultdict(float))
+    semana = defaultdict(lambda: defaultdict(float))
     with open(caminho, newline="", encoding="utf-8-sig") as f:
         amostra = f.read(4096)
         f.seek(0)
@@ -355,15 +369,20 @@ def carrega_entradas_erp(caminho) -> dict:
             if not cod:
                 continue
             q = num(chaves.get("quant") or chaves.get("quantidade"))
-            if not q:
+            qs = num(chaves.get("quant_semana"))
+            if not q and not qs:
                 continue
             # o ERP manda "0308 - VERMELHO"; as abas de origem trazem só o
-            # nome, e é por ele que a divisão por cor casa
+            # nome, e é por ele que o casamento por cor acontece
             cor = str(chaves.get("cor") or "")
             if " - " in cor:
                 cor = cor.split(" - ", 1)[1]
-            entradas[cod][nrm(cor)] += q
-    return {c: dict(v) for c, v in entradas.items()}
+            if q:
+                entradas[cod][nrm(cor)] += q
+            if qs:
+                semana[cod][nrm(cor)] += qs
+    return ({c: dict(v) for c, v in entradas.items()},
+            {c: dict(v) for c, v in semana.items()})
 
 
 def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None,
@@ -381,8 +400,12 @@ def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None,
     wb = openpyxl.load_workbook(caminho, data_only=True)
     f = Fontes()
     if entradas_erp:
-        f.entradas_erp = (entradas_erp if isinstance(entradas_erp, dict)
-                          else carrega_entradas_erp(entradas_erp))
+        if isinstance(entradas_erp, dict):
+            f.entradas_erp = entradas_erp      # chamada direta, nos testes
+        elif isinstance(entradas_erp, tuple):
+            f.entradas_erp, f.entradas_erp_semana = entradas_erp
+        else:
+            f.entradas_erp, f.entradas_erp_semana = carrega_entradas_erp(entradas_erp)
 
     def qtd_de(ws, aba, linha, coluna, rotulo):
         """Lê um número tolerando texto; registra a célula quando não dá."""
