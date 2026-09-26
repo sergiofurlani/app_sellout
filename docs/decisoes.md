@@ -1023,3 +1023,135 @@ os dois é o erro acumulado, produto a produto, e vai para a aba
 
 Sem o CSV, a fórmula fica onde está e a rodada não muda — uma rodada sem o
 arquivo não pode ficar pior do que era antes de a consignação existir.
+
+## D22 · O relatório de consignação tem 16 linhas que não fecham — a extração é a referência
+
+O `Relatório - 113 - ACERTO DE CONSIGNAÇÃO` não fecha com a própria soma:
+
+```
+Entregue (remessa)    8.790
+Devolvido (acerto)   -8.094
+                    -------
+                        696
+A Acertar diz           680
+```
+
+As 16 linhas da diferença têm todas a mesma forma: **entregue 1, devolvido 0,
+a acertar 0**.
+
+**A explicação que eu dei estava errada.** Escrevi que eram "as peças que a
+cliente ficou", saídas da consignação por venda. Não há nada no arquivo que
+diga isso — eu olhei 16 linhas com a mesma forma e transformei o padrão em
+causa. É o terceiro episódio do mesmo erro nesta empreitada, depois do sapato
+que "entrava por compra" e do evento 105 que virou canal paralelo.
+
+**A leitura que se sustenta**, dada pelo negócio em 26/09: *"não temos como
+saber se são peças que o cliente ficou. Se não houve o acerto, teria que
+constar como a acertar. A busca pelo sistema é que está correta."*
+
+Uma linha com entrega, sem devolução e com saldo zero contradiz a definição
+das próprias colunas. O defeito está no relatório.
+
+**Consequência prática:** `coletor/consignacao.py` fica como está —
+`remessa − acerto` é a fonte, e o `consignado.csv` pode ser usado. O relatório
+não serve como referência de validação, nem como fonte.
+
+E cai o motivo que eu tinha dado para trocar a extração por
+`consignacao/Saldo`: eu queria o saldo do ERP para descontar uma venda que
+nunca provei existir. O método existe no `$metadata` e pode valer como
+terceira opinião um dia; não é correção de nada.
+
+**A regra que estes três episódios já deveriam ter fixado:** quando um padrão
+aparece nos dados, o que se tem é o padrão. A causa é uma hipótese, e hipótese
+sobre o negócio se pergunta a quem opera — não se escreve como se fosse achado.
+
+## D23 · O sellout passa a ser calculado no banco
+
+`sellout/db/consulta.py`. Até aqui o banco guardava tudo e ninguém lia de
+volta: o número continuava nascendo da fórmula `K = I/J` das abas de trabalho,
+e por isso a planilha continuava sendo indispensável.
+
+A conta é a mesma, com o que está gravado:
+
+```
+Estoque inicial = saldo de abertura + movimentos até a data
+Vendas          = o que lojas e site venderam até a data
+Sellout         = Vendas / Estoque inicial
+```
+
+**É razão acumulada, não taxa da semana** — a coluna da planilha sempre foi
+assim: quanto de tudo que chegou já foi vendido. Uma peça que chegou em março e
+vendeu em agosto conta nos dois lados.
+
+Três decisões de cálculo que mudam número:
+
+- **Denominador zero devolve `None`, não 0%.** Zero por cento é um número e
+  ninguém questiona; ausência de conta tem que aparecer como ausência. Com 0%,
+  a média de um bloco cairia sem nenhum produto ter ido mal.
+- **O sellout de um conjunto é a razão dos totais, nunca a média das linhas.**
+  Média dá peso igual a um produto de 3 peças e a um de 300: no teste, dois
+  produtos que somam 33/303 = 11% viram 55% pela média ingênua.
+- **Acima de 100% não é truncado.** Venda maior que o Estoque inicial é sinal
+  de denominador incompleto, e truncar esconderia exatamente o que precisa ser
+  visto.
+
+### O que este módulo NÃO resolve
+
+O banco só tem **venda a partir de setembro/2026**, quando as rodadas passaram
+a gravar snapshot. O denominador alcança janeiro — saldo de abertura e
+movimentos do 106 estão lá —, o numerador não.
+
+Então o sellout daqui **subestima** quem vendeu antes de setembro. Não é
+defeito da conta: é dado que falta. Por isso a consulta devolve `venda_desde`,
+a venda mais antiga que encontrou, e o programa avisa. Número que parece
+plausível e está incompleto foi o defeito que mais custou caro nesta empreitada
+— a D19 existe por causa dele.
+
+**O próximo passo é a carga retroativa:** `coletor.vendas` extrai qualquer
+período do ERP. Semana a semana desde 01/01 fecha o buraco, e só então este
+número pode ser comparado com a coluna da planilha de igual para igual.
+
+## D24 · A carga retroativa: o ERP sempre teve a venda, ninguém tinha ido buscar
+
+Fecha o buraco que a D23 expôs. `sellout/db/carga_vendas.py` varre o período
+semana a semana, extrai a venda do ERP e grava cada semana como um `snapshot`
+com `origem='erp'`, datado no domingo que a fecha.
+
+```
+python -m sellout.db.carga_vendas --de 2026-01-01 --ate 2026-09-20
+python -m sellout.db.carga_vendas --de 2026-01-01 --ate 2026-09-20 --aplicar
+```
+
+O mesmo vale para os movimentos, que já tinham caminho pronto desde a D13:
+
+```
+python -m coletor.estoque_inicial --de 2026-01-01 -s movimentos.csv
+python -m sellout.db.movimentos movimentos.csv --aplicar
+```
+
+### Quatro decisões de segurança
+
+**A semana recua até a segunda.** 01/01/2026 é uma quinta: começar ali daria
+uma semana de quatro dias — um número menor que ninguém questionaria, porque a
+linha existe e parece completa.
+
+**Repetir é seguro.** Semana que já tem snapshot `erp` é pulada, e o programa
+diz quantas pulou. `--refazer` regrava, mas o filtro `origem='erp'` está **no
+SQL**, não na chamada: `origem='upload'` são as rodadas de verdade, com as
+decisões de quem rodou dentro, e não se reconstroem.
+
+**Nada é gravado sem `--aplicar`**, como na abertura (D10).
+
+**O papel da filial é cadastrado antes da venda.** A consulta do sellout só
+soma `papel` em ('loja','ecommerce'); filial sem papel cai em 'fora' e some da
+conta — calada. Uma venda que entra no banco e não aparece na consulta é pior
+do que uma venda que não entrou. A matriz fica de fora de propósito: o que ela
+"vende" para a loja é transferência, e já está no denominador.
+
+### O que isso destrava
+
+Com o numerador alcançando janeiro, o sellout do banco pode enfim ser
+comparado com a coluna da planilha **de igual para igual**. Essa comparação é
+a prova que autoriza aposentar o arquivo — e é a única que vale, porque as
+três correções desta semana (D18, D19, D22) vieram de números que pareciam
+certos e não eram.
