@@ -29,6 +29,16 @@
         novos</strong> nasce do que chegou na loja, e não da produção total —
         que inclui o atacado. Sem ele, a rodada segue pela regra de antes.</p>
     </div>
+
+    <div class="opcional">
+      <label class="campo" for="consignado">Consignação em aberto (opcional)</label>
+      <input type="file" id="consignado" name="consignado" accept=".csv">
+      <p class="ajuda">O CSV do <code>coletor.consignacao</code>: remessa menos
+        acerto, o que saiu da loja e não voltou. Com ele, a coluna
+        <strong>Consignado</strong> passa a ser medida em vez de ser o resto
+        da conta — e a diferença entre as duas aparece no relatório, em vez de
+        se acomodar na coluna. Sem ele, a fórmula de sempre fica onde está.</p>
+    </div>
   </div>
 
   <div class="acoes">

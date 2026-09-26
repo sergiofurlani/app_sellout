@@ -109,6 +109,10 @@ class Fontes:
     # acumulado; a que já existe recebe **isto**, senão o denominador dobra a
     # cada semana. As duas colunas vêm do mesmo CSV (D18).
     entradas_erp_semana: dict = field(default_factory=dict)
+    # Consignação em aberto, medida pelo ERP: remessa (14) menos acerto (19),
+    # por produto e cor. Substitui o resto `= J − I − D` que a coluna
+    # Consignado era até a D21 — e que fechava por construção.
+    consignado: dict = field(default_factory=dict)
 
     def eh_cor_conhecida(self, nome) -> bool:
         """O nome aparece como cor em alguma aba de origem?
@@ -385,8 +389,43 @@ def carrega_entradas_erp(caminho) -> tuple[dict, dict]:
             {c: dict(v) for c, v in semana.items()})
 
 
+def carrega_consignado(caminho) -> dict:
+    """Lê o CSV do `coletor.consignacao`: codigo;codigo_cor;cor;quant.
+
+    Mesma forma de `carrega_entradas_erp`, e de propósito: os dois vêm do
+    mesmo lugar e entram na planilha pelo mesmo casamento de cor.
+
+    **Quantidade negativa entra.** Ela significa acerto sem remessa na janela
+    da extração — quase sempre a remessa é anterior ao `--de`. Descartar aqui
+    esconderia o sintoma e devolveria o total ao mundo dos números que fecham
+    por construção, que é exatamente o defeito que esta coluna tinha.
+    """
+    import csv
+
+    consignado = defaultdict(lambda: defaultdict(float))
+    with open(caminho, newline="", encoding="utf-8-sig") as f:
+        amostra = f.read(4096)
+        f.seek(0)
+        try:
+            dialeto = csv.Sniffer().sniff(amostra, delimiters=";,\t")
+        except csv.Error:
+            dialeto = csv.excel
+            dialeto.delimiter = ";"
+        for linha in csv.DictReader(f, dialect=dialeto):
+            chaves = {k.strip().lower(): v for k, v in linha.items() if k}
+            cod = norm_codigo(chaves.get("codigo"))
+            q = num(chaves.get("quant") or chaves.get("quantidade"))
+            if not cod or not q:
+                continue
+            cor = str(chaves.get("cor") or "")
+            if " - " in cor:
+                cor = cor.split(" - ", 1)[1]
+            consignado[cod][nrm(cor)] += q
+    return {c: dict(v) for c, v in consignado.items()}
+
+
 def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None,
-                   entradas_erp=None) -> Fontes:
+                   entradas_erp=None, consignado=None) -> Fontes:
     """Lê Estoque, Vendas, Producao, Preco e Produtos da planilha geral.
 
     `filiais_estoque` restringe quais filiais entram na soma de estoque.
@@ -406,6 +445,9 @@ def carrega_fontes(caminho, filiais_estoque=None, colunas_forcadas=None,
             f.entradas_erp, f.entradas_erp_semana = entradas_erp
         else:
             f.entradas_erp, f.entradas_erp_semana = carrega_entradas_erp(entradas_erp)
+    if consignado:
+        f.consignado = (consignado if isinstance(consignado, dict)
+                        else carrega_consignado(consignado))
 
     def qtd_de(ws, aba, linha, coluna, rotulo):
         """Lê um número tolerando texto; registra a célula quando não dá."""

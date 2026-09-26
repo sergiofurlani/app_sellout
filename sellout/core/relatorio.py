@@ -55,6 +55,18 @@ def gerar(rel: dict, destino: str) -> str:
     # inicial passou a ser a transferência da Elena; a produção continua lida
     # e gravada no banco, para o sellout do Atacado, mas não mexe em número
     # nenhum do varejo.
+    # D21: onde o resto da conta e a medicao discordam. E o erro que a formula
+    # `= J - I - D` vinha absorvendo, produto a produto, e que so existe como
+    # numero porque a coluna deixou de fechar por construcao.
+    _aba(wb, "Consignado divergente",
+         ["Planilha", "Aba", "Linha", "Código", "Descrição",
+          "Resto da conta", "Medido no ERP", "Diferença"],
+         [[d["planilha"], d["aba"], d["linha"], d["codigo"], d["descricao"],
+           d["resto"], d["medido"], d["diferenca"]]
+          for d in sorted(rel.get("consignado_divergente", []),
+                          key=lambda x: -abs(x["diferenca"]))],
+         [12, 12, 8, 12, 45, 14, 14, 12])
+
     _aba(wb, "Entradas do ERP",
          ["Planilha", "Aba", "Linha", "Código", "Descrição", "Qtde", "Observação"],
          [[d["planilha"], d["aba"], d["linha"], d["codigo"], d["descricao"], d["qtde"], d.get("obs", "")]

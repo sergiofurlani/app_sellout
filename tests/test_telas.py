@@ -31,7 +31,7 @@ def relatorio(**extra):
         "pendentes": [], "estoque_inicial_novos": [], "entradas_semana": [],
         "nao_encontrados": [], "sem_cores": [], "cores_sem_destino": [],
         "sem_preco": [], "formulas_ajustadas": [], "avisos": [],
-        "valores_ignorados": [],
+        "valores_ignorados": [], "consignado_divergente": [],
         "nivel": {"Geral": {"Feminino": {"pecas": 10, "valor": 100.0}}},
     }
     base.update(extra)

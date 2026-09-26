@@ -84,7 +84,8 @@ def saude():
 
 @app.post("/analisar", response_class=HTMLResponse)
 async def analisar(request: Request, geral: UploadFile, classicos: UploadFile,
-                   entradas_erp: UploadFile | None = None):
+                   entradas_erp: UploadFile | None = None,
+                   consignado: UploadFile | None = None):
     _limpar_antigos()
     job = uuid.uuid4().hex
     pasta = TRABALHO / job
@@ -102,6 +103,13 @@ async def analisar(request: Request, geral: UploadFile, classicos: UploadFile,
     if entradas_erp is not None and entradas_erp.filename:
         caminho_erp = pasta / "entradas-erp.csv"
         await _gravar(entradas_erp, caminho_erp)
+
+    # Opcional tambem: a consignacao em aberto (D21). Sem ele a coluna
+    # Consignado continua sendo a formula de sempre, e a rodada nao muda.
+    caminho_consig = None
+    if consignado is not None and consignado.filename:
+        caminho_consig = pasta / "consignado.csv"
+        await _gravar(consignado, caminho_consig)
 
     faltando = abas_faltando(caminho_geral)
     if faltando:
@@ -162,6 +170,8 @@ async def processar(request: Request, job: str = Form(...), data_sellout: str = 
             decisoes,
             entradas_erp=str(pasta / "entradas-erp.csv")
             if (pasta / "entradas-erp.csv").exists() else None,
+            consignado=str(pasta / "consignado.csv")
+            if (pasta / "consignado.csv").exists() else None,
         )
     except Exception as e:
         logging.exception("falha ao processar a rodada")

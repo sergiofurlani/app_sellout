@@ -933,3 +933,93 @@ produção isso funciona — o Jinja do FastAPI trata ausente como falso —, ma
 contar com a tolerância do modo padrão. Virou `{% if erro is defined and erro %}`,
 que vale nos dois. Os testes renderizam com `StrictUndefined` justamente para
 que esse tipo de coisa apareça aqui, e não numa sexta à noite.
+
+## D21 · Consignado é remessa sem acerto, medida — não o resto da conta
+
+A coluna **Consignado** nunca foi medida. Ela é a fórmula
+`= Estoque inicial − Vendas totais − Estoque atual`: o **resto**. Tudo que não
+fecha nas outras três colunas se acomoda ali, tenha ido para a mão de uma
+cliente ou não.
+
+**A prova de que é lata de lixo:** na planilha de 14/09, 10 linhas estão com
+Consignado **negativo**, somando −31 peças. Não existe menos dezesseis peças na
+mão de uma cliente. A `334096` está com −16.
+
+**O tamanho do buraco**, medido em 26/09:
+
+| | peças |
+|---|---:|
+| Consignado na planilha (o resto) | 949 |
+| `A Acertar` no relatório do ERP | 637 |
+| **diferença sem explicação** | **312** |
+
+Um terço da coluna não é consignação — é erro acumulado das outras três
+colunas, que não tem para onde ir.
+
+### A regra, como o negócio explicou
+
+    14  (código 13)  REMESSA DE CONSIGNAÇÃO   a peça sai da loja
+    19  (código 14)  ACERTO DE CONSIGNAÇÃO    a peça volta
+
+**Acerto não é venda.** Toda remessa retorna como acerto; se a cliente ficou
+com a peça, sai uma venda normal, pelos eventos que o `coletor.vendas` já
+trata. A consignação não encosta no numerador do sellout — ela só explica onde
+a peça está enquanto não está na loja.
+
+O que interessa: **remessa sem acerto correspondente.**
+
+### Correção de uma suposição minha
+
+O `docs/eventos-mn.md` classificava os eventos de consignação sob o título
+*"Matéria-prima, produção, conserto e consignação — fora: não tocam peça
+acabada de loja"*. **Tocam.** O relatório mostra 8.489 peças entregues e 7.837
+devolvidas — é peça acabada saindo da loja e voltando, exatamente o que o
+Estoque atual enxerga e o Estoque inicial não. Agrupei consignação com
+matéria-prima e conserto porque estavam na mesma vizinhança da lista de
+eventos, e não verifiquei.
+
+### Posição, não fluxo
+
+`coletor/consignacao.py` soma remessa e subtrai acerto. Diferente de todos os
+outros coletores, **a janela não é a da semana**: uma peça que saiu em março e
+não voltou continua fora hoje. `--de` tem que alcançar a consignação mais
+antiga ainda aberta.
+
+Uma janela curta aqui **não dá erro** — devolve um número menor, que parece
+plausível. Por isso saldo negativo (acerto sem remessa na janela) entra no CSV
+em vez de ser escondido: é o sintoma de que o `--de` não recuou o bastante, e
+esconder devolveria o total ao mundo dos números que fecham por construção.
+
+### O ganho não é a coluna
+
+É a conta deixar de fechar sozinha:
+
+```
+hoje:   Consignado = J − I − D        (fecha sempre, esconde tudo)
+depois: J − I − D − Consignado = 0 ?  (se não fechar, aparece)
+```
+
+As 312 peças viram divergência visível, com código de produto, em vez de
+sumirem dentro de um número que ninguém questiona.
+
+### A comparação não é validação — corrigido em 26/09
+
+Eu tinha escrito que o total do coletor "tem que bater" com o `A Acertar` do
+ERP. Errado, e o negócio corrigiu: *"não tem que bater, porque no processo é
+uma conta... o outro era uma conta de chegar"*.
+
+Uma medição **não se valida contra a estimativa que veio substituir**. Se
+batessem, uma das duas seria redundante. O que a comparação serve é ordem de
+grandeza: 12 ou 6.000 denunciam janela errada; algumas centenas de diferença
+são o resultado esperado — são o erro que a fórmula vinha absorvendo.
+
+### Como entra no app
+
+O CSV sobe num campo opcional, como o `entradas-erp.csv`. Com ele, a coluna
+Consignado passa a ser **escrita** com o valor medido. E o valor antigo, que o
+Excel tinha calculado, é lido **antes** de ser sobrescrito: a diferença entre
+os dois é o erro acumulado, produto a produto, e vai para a aba
+**Consignado divergente** do relatório.
+
+Sem o CSV, a fórmula fica onde está e a rodada não muda — uma rodada sem o
+arquivo não pode ficar pior do que era antes de a consignação existir.

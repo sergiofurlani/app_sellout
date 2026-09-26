@@ -39,6 +39,24 @@
   </table>
 </div>
 
+{% if rel.consignado_divergente %}
+<div class="painel">
+  <h2>Consignado: medido x resto da conta
+      <span class="chip">{{ rel.consignado_divergente|length }}</span></h2>
+  <p class="ajuda">A coluna era <code>Estoque inicial − Vendas − Estoque atual</code>,
+    e fechava sempre. Agora ela é a consignação que o ERP mediu, e o que
+    sobrava escondido virou esta lista — detalhe no relatório.</p>
+  <table>
+    <tr><th class="num">resto</th><th class="num">medido</th><th class="num">diferença</th></tr>
+    <tr>
+      <td class="num">{{ rel.consignado_divergente|sum(attribute='resto')|round|int }}</td>
+      <td class="num">{{ rel.consignado_divergente|sum(attribute='medido')|round|int }}</td>
+      <td class="num">{{ rel.consignado_divergente|sum(attribute='diferenca')|round|int }}</td>
+    </tr>
+  </table>
+</div>
+{% endif %}
+
 {% set pendentes = rel.mantidos|length + rel.pendentes|length + rel.nao_encontrados|length
                    + rel.cores_sem_destino|length %}
 {% if pendentes %}

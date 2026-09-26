@@ -188,11 +188,11 @@ def analisar(caminho_geral, caminho_classicos, entradas_erp=None) -> dict:
 # --------------------------------------------------------------------------- #
 
 def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos,
-              decisoes, entradas_erp=None) -> dict:
+              decisoes, entradas_erp=None, consignado=None) -> dict:
     filiais = decisoes.get("filiais_estoque") or None
     fontes = carrega_fontes(caminho_geral, filiais_estoque=filiais,
                             colunas_forcadas=decisoes.get("colunas"),
-                            entradas_erp=entradas_erp)
+                            entradas_erp=entradas_erp, consignado=consignado)
     rotulo_data = decisoes.get("data_sellout") or rotulo_sellout()
     aprovados = set(decisoes.get("novos") or [])
     escolhas = decisoes.get("duplicados") or {}
@@ -201,6 +201,7 @@ def processar(caminho_geral, caminho_classicos, saida_geral, saida_classicos,
         "alterados": 0, "novos_inseridos": [], "por_cor": [],
         "mantidos": [], "pendentes": [],
         "estoque_inicial_novos": [], "entradas_semana": [],
+        "consignado_divergente": [],
         "nao_encontrados": [], "sem_cores": [], "cores_sem_destino": [], "sem_preco": [],
         "formulas_ajustadas": [], "nivel": {},
         "avisos": list(fontes.avisos),
@@ -247,6 +248,7 @@ def _processar_planilha(p, fontes, rotulo_data, escolhas, novos_por_aba, rel):
         cols = mapa_colunas(ws)
         col_sellout, col_inicial, col_atual = cols["K"], cols["J"], cols["D"]
         col_total = cols["I"]
+        col_consig = cols.get("E")
         filiais_cols = {k: cols[k] for k in ("JARDINS", "IGUATEMI", "SITE") if k in cols}
         max_orig = ws.max_row
         blocos = blocos_de(ws)
@@ -255,6 +257,12 @@ def _processar_planilha(p, fontes, rotulo_data, escolhas, novos_por_aba, rel):
         modelo = _modelos_de_formula(ws, blocos[0]["ini"], col_sellout)
 
         cache_sellout = {r: ws_val.cell(r, col_sellout).value for r in range(1, max_orig + 1)}
+        # O valor ANTIGO da coluna Consignado — o resto `= J − I − D` que o
+        # Excel calculou. Guardado antes de ser sobrescrito porque a diferença
+        # entre ele e a consignação medida **é** o erro acumulado que a
+        # fórmula vinha escondendo (D21). Sem guardar agora, ele se perde.
+        cache_consig = ({r: ws_val.cell(r, col_consig).value
+                         for r in range(1, max_orig + 1)} if col_consig else {})
         cache_vermelho = {r: vermelho(ws_rich.cell(r, 3).value) for r in range(1, max_orig + 1)}
         cache_desc = {r: texto(ws_rich.cell(r, 3).value) for r in range(1, max_orig + 1)}
 
@@ -416,6 +424,22 @@ def _processar_planilha(p, fontes, rotulo_data, escolhas, novos_por_aba, rel):
             for col, q in vendas_por_col.items():
                 anterior = ws.cell(r, col).value
                 ws.cell(r, col).value = (anterior + q) if isinstance(anterior, (int, float)) else q
+
+            # D21: a coluna Consignado deixa de ser o resto da conta e passa a
+            # ser medida — remessa (evento 14) menos acerto (19). O resto
+            # fechava sempre, por construção, e engolia qualquer erro das
+            # outras três colunas; medida, ela permite que a diferença
+            # apareça. Sem o arquivo, a fórmula antiga fica onde está.
+            if col_consig and fontes.consignado:
+                medido = sum(fontes.consignado.get(cod, {}).get(c, 0) for c in filtro)
+                antes = cache_consig.get(original.get(r))
+                ws.cell(r, col_consig).value = medido
+                if isinstance(antes, (int, float)) and abs(antes - medido) > 0.5:
+                    rel["consignado_divergente"].append({
+                        "planilha": p.rotulo, "aba": aba, "linha": r, "codigo": cod,
+                        "descricao": cache_desc.get(original.get(r)),
+                        "resto": antes, "medido": medido,
+                        "diferenca": antes - medido})
 
             # D18: o incremento semanal do Estoque inicial é a transferência da
             # Elena, não a produção.
