@@ -182,25 +182,49 @@ def divergencias(onde: dict, cadastro: dict) -> dict:
             "sem_colecao_erp": sem_colecao_erp}
 
 
-def grava_cadastro(produtos) -> int:
-    """Upsert. Campo vazio não apaga o que já está lá."""
+# Quantas linhas por ida ao banco. Uma instrução por produto custava ~4.000
+# viagens de rede até a Railway — minutos de espera pelo que é meio segundo
+# de trabalho. O gargalo aqui nunca foi o Postgres; era a latência.
+LOTE = 500
+
+CAMPOS_PRODUTO = ("codigo", "descricao", "divisao", "departamento",
+                  "grupo", "marca", "grade", "colecao")
+
+SQL_PRODUTO = """
+INSERT INTO produto (codigo, descricao, divisao, departamento, grupo, marca,
+                     grade, colecao)
+VALUES {valores}
+ON CONFLICT (codigo) DO UPDATE SET
+  descricao    = coalesce(nullif(excluded.descricao, ''),    produto.descricao),
+  divisao      = coalesce(nullif(excluded.divisao, ''),      produto.divisao),
+  departamento = coalesce(nullif(excluded.departamento, ''), produto.departamento),
+  grupo        = coalesce(nullif(excluded.grupo, ''),        produto.grupo),
+  marca        = coalesce(nullif(excluded.marca, ''),        produto.marca),
+  grade        = coalesce(nullif(excluded.grade, ''),        produto.grade),
+  colecao      = coalesce(nullif(excluded.colecao, ''),      produto.colecao),
+  alterado_em  = now()
+"""
+
+
+def em_lotes(seq, tamanho=LOTE):
+    for i in range(0, len(seq), tamanho):
+        yield seq[i:i + tamanho]
+
+
+def grava_cadastro(produtos, lote=LOTE) -> int:
+    """Upsert em lotes. Campo vazio não apaga o que já está lá.
+
+    Os valores continuam sendo **parâmetros**, nunca texto interpolado: o que
+    se monta por string é só a quantidade de `(%s,...)`, que não vem de dado
+    nenhum.
+    """
     with conectar() as c:
         with c.cursor() as cur:
-            for p in produtos:
-                cur.execute(
-                    "INSERT INTO produto (codigo, descricao, divisao, "
-                    "  departamento, grupo, marca, grade, colecao) "
-                    "VALUES (%(codigo)s,%(descricao)s,%(divisao)s,"
-                    "  %(departamento)s,%(grupo)s,%(marca)s,%(grade)s,%(colecao)s) "
-                    "ON CONFLICT (codigo) DO UPDATE SET "
-                    "  descricao    = coalesce(nullif(excluded.descricao, ''), produto.descricao),"
-                    "  divisao      = coalesce(nullif(excluded.divisao, ''), produto.divisao),"
-                    "  departamento = coalesce(nullif(excluded.departamento, ''), produto.departamento),"
-                    "  grupo        = coalesce(nullif(excluded.grupo, ''), produto.grupo),"
-                    "  marca        = coalesce(nullif(excluded.marca, ''), produto.marca),"
-                    "  grade        = coalesce(nullif(excluded.grade, ''), produto.grade),"
-                    "  colecao      = coalesce(nullif(excluded.colecao, ''), produto.colecao),"
-                    "  alterado_em  = now()", p)
+            for pedaco in em_lotes(produtos, lote):
+                marcas = ",".join(["(" + ",".join(["%s"] * len(CAMPOS_PRODUTO)) + ")"]
+                                  * len(pedaco))
+                dados = [p[campo] for p in pedaco for campo in CAMPOS_PRODUTO]
+                cur.execute(SQL_PRODUTO.format(valores=marcas), dados)
     return len(produtos)
 
 
@@ -217,15 +241,23 @@ def grava_planilha(onde: dict, quando=None) -> int:
     """
     from datetime import date as _date
     quando = quando or _date.today()
+    # Um UPDATE por produto eram 300 viagens de rede. Aqui vai uma lista de
+    # valores e o Postgres casa pelo codigo, numa instrucao por lote.
+    itens = [(cod, d["bloco"], d["linha"]) for cod, d in onde.items()]
+    n = 0
     with conectar() as c:
         with c.cursor() as cur:
-            n = 0
-            for cod, d in onde.items():
+            for pedaco in em_lotes(itens):
+                marcas = ",".join(["(%s,%s,%s)"] * len(pedaco))
+                dados = [v for item in pedaco for v in item]
                 cur.execute(
-                    "UPDATE produto SET bloco_planilha = %s, bloco_em = %s, "
-                    "  linha = coalesce(nullif(%s, ''), linha), "
-                    "  alterado_em = now() WHERE codigo = %s",
-                    (d["bloco"], quando, d["linha"], cod))
+                    "UPDATE produto SET bloco_planilha = novo.bloco, "
+                    "  bloco_em = %s, "
+                    "  linha = coalesce(nullif(novo.linha, ''), produto.linha), "
+                    "  alterado_em = now() "
+                    f"FROM (VALUES {marcas}) AS novo(codigo, bloco, linha) "
+                    "WHERE produto.codigo = novo.codigo",
+                    [quando] + dados)
                 n += cur.rowcount
     return n
 

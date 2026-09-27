@@ -207,3 +207,34 @@ def test_o_arquivo_de_excecoes_e_lido_do_repositorio():
 
 def test_sem_arquivo_nao_ha_excecao(tmp_path):
     assert cadastro.le_excecoes(tmp_path / "nao-existe.csv") == {}
+
+
+def test_os_lotes_cobrem_tudo_sem_repetir():
+    """Um INSERT por produto eram ~4.000 viagens de rede até a Railway. O
+    ganho é real, mas lote que perde ou repete linha é pior que lentidão."""
+    itens = list(range(1203))
+    pedacos = list(cadastro.em_lotes(itens, 500))
+    assert [len(p) for p in pedacos] == [500, 500, 203]
+    assert [x for p in pedacos for x in p] == itens
+
+
+def test_lote_vazio_nao_gera_instrucao():
+    assert list(cadastro.em_lotes([], 500)) == []
+
+
+def test_a_ordem_dos_valores_segue_os_campos_do_insert():
+    """O SQL monta `(%s,%s,...)` posicional: campo fora de ordem grava
+    descrição na coluna da coleção, sem erro nenhum."""
+    p = produto()
+    dados = [p[c] for c in cadastro.CAMPOS_PRODUTO]
+    assert dados[0] == p["codigo"]
+    assert dados[-1] == p["colecao"]
+    assert len(dados) == len(cadastro.CAMPOS_PRODUTO) == 8
+
+
+def test_o_sql_nao_interpola_dado():
+    """Só a quantidade de marcadores é montada por string — nunca o valor."""
+    marcas = ",".join(["(" + ",".join(["%s"] * 8) + ")"] * 3)
+    sql = cadastro.SQL_PRODUTO.format(valores=marcas)
+    assert sql.count("%s") == 24
+    assert "INSERT INTO produto" in sql
