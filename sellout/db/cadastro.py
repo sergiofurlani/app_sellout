@@ -75,16 +75,23 @@ def do_cadastro(caminho: str) -> tuple[list[dict], dict]:
 
 
 def da_planilha(caminho: str) -> dict:
-    """{codigo: linha comercial} pelos blocos das abas de trabalho.
+    """{codigo: {bloco, aba, colecao, linha}} — onde o produto está **hoje**.
 
-    Só interessa o bloco que **não** vira sigla: HOME, GLORIA KALIL, PIMA,
-    CASHMERE, COURO. Um bloco AW26 não é linha comercial — é coleção, e essa
-    vem do ERP.
+    Registra **todos** os blocos, não só os de linha comercial. Uma primeira
+    versão guardava só HOME/PIMA/CASHMERE e descartava AW26 e SS27, por supor
+    que a coleção era assunto exclusivo do ERP. Mas é justamente a
+    classificação atual da planilha que permite **auditar** o cadastro
+    enquanto ele está sendo arrumado: sem ela não há contra o quê comparar.
+
+    O bloco vira uma coisa ou outra conforme o nome:
+
+        AW26, SS27, ...   coleção — comparável com o que o ERP diz
+        HOME, PIMA, ...   linha comercial — não existe no ERP (D11)
     """
     import openpyxl
 
     wb = openpyxl.load_workbook(caminho, read_only=False, data_only=True)
-    linhas = {}
+    onde = {}
     for aba in ABAS_TRABALHO:
         if aba not in wb.sheetnames:
             continue
@@ -93,14 +100,41 @@ def da_planilha(caminho: str) -> dict:
             titulo = (b["titulo"] or "")
             _pre, _sep, nome = titulo.partition("-")
             nome = (nome or titulo).strip().upper()
-            if not nome or b["colecao"]:
-                continue          # bloco de coleção: quem manda é o ERP
+            if not nome:
+                continue
+            sigla = (b["colecao"] or "").upper()
             for r in range(b["ini"], b["fim"] + 1):
                 cod = norm_codigo(ws.cell(r, 2).value)
                 if cod:
-                    linhas[cod] = nome
+                    onde[cod] = {"bloco": nome, "aba": aba,
+                                 "colecao": sigla,
+                                 "linha": "" if sigla else nome}
     wb.close()
-    return linhas
+    return onde
+
+
+def divergencias(onde: dict, cadastro: dict) -> dict:
+    """Onde a planilha e o cadastro do ERP discordam da coleção.
+
+    É a lista de trabalho para arrumar o cadastro. Enquanto ela não zerar, o
+    ERP ainda não pode ser a única fonte — e trocar antes disso seria mudar de
+    referência sem saber o tamanho da diferença.
+    """
+    iguais, difere, so_planilha, sem_colecao_erp = [], [], [], []
+    for cod, d in sorted(onde.items()):
+        if not d["colecao"]:
+            continue                       # bloco de linha comercial, não compara
+        erp = cadastro.get(cod)
+        if erp is None:
+            so_planilha.append({"codigo": cod, "planilha": d["colecao"]})
+        elif not erp:
+            sem_colecao_erp.append({"codigo": cod, "planilha": d["colecao"]})
+        elif erp == d["colecao"]:
+            iguais.append(cod)
+        else:
+            difere.append({"codigo": cod, "planilha": d["colecao"], "erp": erp})
+    return {"iguais": iguais, "difere": difere, "so_planilha": so_planilha,
+            "sem_colecao_erp": sem_colecao_erp}
 
 
 def grava_cadastro(produtos) -> int:
@@ -125,18 +159,28 @@ def grava_cadastro(produtos) -> int:
     return len(produtos)
 
 
-def grava_linhas(linhas: dict) -> int:
-    """Só a linha comercial, e só de quem já existe na tabela.
+def grava_planilha(onde: dict, quando=None) -> int:
+    """Grava a classificação atual da planilha: bloco e linha comercial.
 
-    Produto que não está no cadastro do ERP não nasce aqui: linha comercial é
-    atributo nosso sobre um produto do ERP, não um produto novo.
+    Só de quem já existe na tabela. Produto que não está no cadastro do ERP
+    não nasce aqui: isto é atributo **sobre** um produto do ERP, não um
+    produto novo — e criar um registro só com o bloco esconderia justamente o
+    produto que falta no cadastro.
+
+    **A coleção não é escrita por aqui.** Ela vem do ERP; o bloco fica ao lado,
+    como registro do que era, para a auditoria.
     """
+    from datetime import date as _date
+    quando = quando or _date.today()
     with conectar() as c:
         with c.cursor() as cur:
             n = 0
-            for cod, nome in linhas.items():
-                cur.execute("UPDATE produto SET linha = %s, alterado_em = now() "
-                            "WHERE codigo = %s", (nome, cod))
+            for cod, d in onde.items():
+                cur.execute(
+                    "UPDATE produto SET bloco_planilha = %s, bloco_em = %s, "
+                    "  linha = coalesce(nullif(%s, ''), linha), "
+                    "  alterado_em = now() WHERE codigo = %s",
+                    (d["bloco"], quando, d["linha"], cod))
                 n += cur.rowcount
     return n
 
@@ -156,6 +200,7 @@ def main(argv=None):
         print(f"\nSem banco: {razao}")
         return 1
 
+    produtos = []
     if args.cadastro:
         caminho = pathlib.Path(args.cadastro)
         if not caminho.exists():
@@ -181,16 +226,40 @@ def main(argv=None):
         if not caminho.exists():
             print(f"\nNao encontrei: {caminho}")
             return 1
-        linhas = da_planilha(str(caminho))
-        print(f"\nLinha comercial: {len(linhas):,} produto(s)")
-        for nome, n in Counter(linhas.values()).most_common():
-            print(f"    {nome[:20]:20} {n:>5}")
+        onde = da_planilha(str(caminho))
+        print(f"\nClassificacao atual da planilha: {len(onde):,} produto(s)")
+        for nome, n in Counter(d["bloco"] for d in onde.values()).most_common(20):
+            print(f"    {nome[:22]:22} {n:>5}")
+
+        # A auditoria do cadastro: onde os dois discordam.
+        do_erp = {p["codigo"]: p["colecao"] for p in (produtos or [])}
+        if do_erp:
+            d = divergencias(onde, do_erp)
+            print(f"\n  Planilha x cadastro do ERP, so os blocos de colecao:")
+            print(f"    iguais                      {len(d['iguais']):>5}")
+            print(f"    colecao diferente           {len(d['difere']):>5}")
+            print(f"    sem colecao no cadastro     {len(d['sem_colecao_erp']):>5}")
+            print(f"    nao estao no cadastro       {len(d['so_planilha']):>5}")
+            if d["difere"]:
+                print("\n    codigo    planilha   cadastro")
+                for x in d["difere"][:25]:
+                    print(f"    {x['codigo']:9} {x['planilha']:10} {x['erp']}")
+                if len(d["difere"]) > 25:
+                    print(f"    ... e mais {len(d['difere']) - 25}")
+            if d["difere"] or d["sem_colecao_erp"] or d["so_planilha"]:
+                print("\n  Esta e a lista de trabalho para arrumar o cadastro.")
+                print("  Enquanto ela nao zerar, o ERP ainda nao pode ser a unica")
+                print("  fonte — trocar antes seria mudar de referencia sem saber")
+                print("  o tamanho da diferenca.")
+        else:
+            print("\n  (rode junto com --cadastro para comparar com o ERP)")
+
         if args.aplicar:
-            n = grava_linhas(linhas)
-            print(f"\n  {n:,} produto(s) atualizado(s)")
-            if n < len(linhas):
-                print(f"  {len(linhas) - n} nao estavam na tabela produto — rode")
-                print("  o --cadastro primeiro; linha comercial nao cria produto.")
+            n = grava_planilha(onde)
+            print(f"\n  {n:,} produto(s) com o bloco registrado")
+            if n < len(onde):
+                print(f"  {len(onde) - n} nao estavam na tabela produto — rode")
+                print("  o --cadastro primeiro; o bloco nao cria produto.")
 
     if not args.aplicar:
         print("\n  Nada foi gravado. Rode de novo com --aplicar.")

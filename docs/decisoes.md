@@ -1248,3 +1248,40 @@ um ao outro. Igual ao `entradas-erp.csv`, que era gerado e não era usado na
 linha existente (D18), e ao `coletor.vendas`, que sabia comparar e não sabia
 extrair. **Quando algo "já foi discutido" e mesmo assim não funciona, o
 suspeito não é a regra: é o cano.**
+
+### D26 (ajuste de 27/09) · A planilha registra onde o produto está, não só a linha
+
+A primeira versão guardava do bloco **só a linha comercial** (HOME, PIMA,
+CASHMERE) e descartava os blocos de coleção, por supor que coleção era assunto
+exclusivo do ERP.
+
+Corrigido pelo negócio: *"registre onde os produtos estão classificados e
+também olhe para o cadastro do ERP"*. É a classificação atual da planilha que
+permite **auditar** o cadastro enquanto ele é arrumado — sem ela não há contra
+o quê comparar.
+
+Então `--planilha` passa a registrar **todo** bloco, em `produto.bloco_planilha`
+(migração 003), com a data da foto em `bloco_em`. O nome da coluna diz que é
+transitório: quando o cadastro estiver certo, a coleção vem só de
+`produto.colecao` e o bloco fica como registro do que era.
+
+**A coleção continua não sendo escrita pela planilha.** Ela vem do ERP; o bloco
+fica ao lado. Misturar as duas na mesma coluna apagaria a diferença que a
+auditoria precisa ver.
+
+E o comando passa a imprimir a comparação, que é a lista de trabalho:
+
+```
+iguais                      ...
+colecao diferente           ...   <- codigo, o que diz a planilha, o que diz o ERP
+sem colecao no cadastro     ...
+nao estao no cadastro       ...
+```
+
+Os três últimos são problemas **diferentes** e por isso ficam separados: um
+produto existe e está sem classificação; outro nem está cadastrado. Misturá-los
+manda quem for arrumar procurar no lugar errado.
+
+**O plano acordado:** o negócio arruma o cadastro do ERP; quando essa lista
+zerar, o ERP vira fonte única e a planilha sai também dessa função. Trocar de
+referência antes de medir a diferença seria mudar o chão sem saber a altura.
