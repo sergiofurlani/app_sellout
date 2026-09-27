@@ -247,6 +247,73 @@ def veredito(linhas, tolerancia=TOLERANCIA) -> dict:
             "pct_ok": (len(ok) / len(linhas)) if linhas else None}
 
 
+# A planilha tem uma coluna por loja, e as três somam a Vendas Totais. O nome
+# da coluna e o código da filial no ERP não são o mesmo texto.
+LOJAS = {"JARDINS": "EGREY JDS", "IGUATEMI": "IGUATEMI", "SITE": "SITE"}
+
+
+def da_planilha_por_loja(caminho: str) -> dict:
+    """{codigo: {filial: vendas}} — a venda da planilha aberta por loja.
+
+    **É o que transforma um desvio em um lugar.** A coluna Vendas Totais é a
+    soma de Jardins + Iguatemi + Site; conferido no 332004 (8 + 19 + 15 = 42) e
+    no 330010 (3 + 9 + 8 = 20). Um desvio de 3 peças no total não diz nada; o
+    mesmo desvio inteiro numa das três lojas diz onde procurar.
+    """
+    wb = openpyxl.load_workbook(caminho, data_only=True)
+    por_codigo = defaultdict(lambda: defaultdict(float))
+    for aba in ABAS_TRABALHO:
+        if aba not in wb.sheetnames:
+            continue
+        ws = wb[aba]
+        cols = mapa_colunas(ws)
+        for r in range(4, ws.max_row + 1):
+            cod = norm_codigo(ws.cell(r, 2).value)
+            if not cod or not RE_CODIGO.match(cod):
+                continue
+            for chave, filial in LOJAS.items():
+                c = cols.get(chave)
+                if not c:
+                    continue
+                v = ws.cell(r, c).value
+                if isinstance(v, (int, float)):
+                    por_codigo[cod][filial] += float(v)
+    wb.close()
+    return {c: dict(v) for c, v in por_codigo.items()}
+
+
+def por_loja(codigos, planilha: dict, banco: dict, tolerancia=TOLERANCIA) -> dict:
+    """Abre o desvio de venda por filial, e soma o desvio de cada uma.
+
+    Devolve `resumo` ({filial: {planilha, banco, dif, produtos}}) e `linhas`
+    (por produto). Uma filial do banco que a planilha não tem — nome novo, ou
+    mapeada como `fora` — aparece com `planilha` zerado em vez de ser ignorada:
+    é a diferença que explicaria um desvio constante e não está em lugar nenhum
+    do arquivo.
+    """
+    filiais = set(LOJAS.values())
+    for cod in codigos:
+        filiais |= set(banco.get(cod, {}))
+        filiais |= set(planilha.get(cod, {}))
+    resumo = {f: {"planilha": 0.0, "banco": 0.0, "dif": 0.0, "produtos": 0}
+              for f in sorted(filiais)}
+    linhas = []
+    for cod in codigos:
+        pl, bc = planilha.get(cod, {}), banco.get(cod, {})
+        item = {"codigo": cod, "lojas": {}}
+        for f in resumo:
+            p, b = float(pl.get(f, 0.0)), float(bc.get(f, 0.0))
+            d = p - b
+            item["lojas"][f] = {"planilha": p, "banco": b, "dif": d}
+            resumo[f]["planilha"] += p
+            resumo[f]["banco"] += b
+            resumo[f]["dif"] += d
+            if abs(d) > tolerancia:
+                resumo[f]["produtos"] += 1
+        linhas.append(item)
+    return {"resumo": resumo, "linhas": linhas}
+
+
 def desde_quando(semanas, alvo, tolerancia=TOLERANCIA):
     """A semana a partir da qual o banco soma exatamente `alvo`.
 
@@ -436,8 +503,7 @@ def main(argv=None):
             print(f'\n    {"codigo":8} {"venda pl":>8} {"liquido":>8} {"bruto":>7} '
                   f'{"dif":>6} {"resto":>6}  {"bc desde":11} {"casa desde":11} {"pl desde":10}')
             print("    " + "-" * 92)
-            for x in sorted(ap, key=lambda y: (y["casa_desde"] or date(1900, 1, 1),
-                                               -abs(y["dif_vendas"])))[:args.limite * 3]:
+            for x in sorted(ap, key=lambda y: -abs(y["dif_vendas"]))[:args.limite * 3]:
                 print(f'    {x["codigo"]:8} {x["vendas_planilha"]:>8,.0f} '
                       f'{x["vendas_banco"]:>8,.0f} {x["vendas_bruto"]:>7,.0f} '
                       f'{x["dif_vendas"]:>6,.0f} {x["resto"]:>6,.0f}  '
@@ -456,6 +522,30 @@ def main(argv=None):
                 print("    Se agrupar num mes, a janela da planilha e outra e a")
                 print("    comparacao tem de comecar onde ela comeca. Se espalhar,")
                 print("    sao coincidencias de soma e isto nao mediu nada.")
+            lojas = por_loja(codigos, da_planilha_por_loja(str(caminho)),
+                             consulta.vendas_por_filial(codigos, args.ate),
+                             args.tolerancia)
+            print("\n    desvio de venda por loja, somado nesses produtos:")
+            print(f'      {"filial":12} {"planilha":>9} {"banco":>9} {"dif":>8} '
+                  f'{"produtos":>9}')
+            print("      " + "-" * 52)
+            for f, d in sorted(lojas["resumo"].items(), key=lambda kv: -abs(kv[1]["dif"])):
+                print(f'      {f[:12]:12} {d["planilha"]:>9,.0f} {d["banco"]:>9,.0f} '
+                      f'{d["dif"]:>8,.0f} {d["produtos"]:>9}')
+            print("      A coluna Vendas Totais e a soma das tres lojas. Desvio que")
+            print("      se concentra numa delas tem lugar; espalhado nas tres, nao.")
+            print(f'\n      {"codigo":8} ' +
+                  " ".join(f'{f[:9]:>11}' for f in sorted(lojas["resumo"])))
+            print("      " + "-" * (9 + 12 * len(lojas["resumo"])))
+            for x in sorted(lojas["linhas"],
+                            key=lambda y: -max(abs(v["dif"]) for v in y["lojas"].values())
+                            )[:args.limite * 2]:
+                celulas = " ".join(
+                    f'{v["planilha"]:>4,.0f}/{v["banco"]:<4,.0f} {"*" if abs(v["dif"]) > args.tolerancia else " "}'
+                    for _f, v in sorted(x["lojas"].items()))
+                print(f'      {x["codigo"]:8} {celulas}')
+            print("      planilha/banco por loja; * marca a que difere")
+
             sem_nada = [x for x in ap if not x["casa_desde"]
                         and not x["entre_liquido_e_bruto"]]
             if sem_nada:

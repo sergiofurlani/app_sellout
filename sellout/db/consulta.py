@@ -250,6 +250,35 @@ def series_semanais(codigos, ate: date) -> dict:
     return dict(fora)
 
 
+SQL_POR_FILIAL = """
+SELECT v.codigo, v.filial, coalesce(f.papel, 'fora') AS papel, sum(v.qtd) AS qtd
+  FROM venda v
+  JOIN snapshot s ON s.id = v.snapshot_id
+  LEFT JOIN filial f ON f.codigo = v.filial
+ WHERE s.data <= %(ate)s
+   AND v.codigo = ANY(%(codigos)s)
+ GROUP BY v.codigo, v.filial, coalesce(f.papel, 'fora')
+"""
+
+
+def vendas_por_filial(codigos, ate: date) -> dict:
+    """{codigo: {filial: qtd}} — sem filtrar papel, de propósito.
+
+    O filtro de papel é o que faz uma filial desaparecer do sellout sem avisar.
+    Se existe um quarto lugar vendendo e ele está mapeado como `fora`, é aqui
+    que aparece — e não apareceria numa consulta que já o exclui.
+    """
+    if not codigos:
+        return {}
+    fora = defaultdict(dict)
+    with conectar() as c:
+        with c.cursor() as cur:
+            cur.execute(SQL_POR_FILIAL, {"ate": ate, "codigos": list(codigos)})
+            for cod, fil, _papel, q in cur.fetchall():
+                fora[cod][fil] = fora[cod].get(fil, 0.0) + float(q)
+    return dict(fora)
+
+
 SQL_HISTORICO_CODIGO = """
 SELECT data, cores, percentual
   FROM sellout_historico

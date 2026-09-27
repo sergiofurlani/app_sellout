@@ -293,3 +293,51 @@ def test_sem_data_no_cabecalho_nao_se_afirma_que_casa():
 def test_seis_dias_e_o_limite():
     assert confere.janela_casa(date(2026, 9, 26), date(2026, 9, 20))
     assert not confere.janela_casa(date(2026, 9, 27), date(2026, 9, 20))
+
+
+# --------------------------------- abrir o desvio por loja (o desvio de +3)
+
+def test_o_desvio_concentrado_numa_loja_aparece_nela_sozinha():
+    """**O que 18 produtos com desvio de exatamente +3 pedem.** Um desvio no
+    total não tem lugar; o mesmo desvio inteiro numa das três lojas tem."""
+    r = confere.por_loja(
+        ["332004"],
+        {"332004": {"EGREY JDS": 8.0, "IGUATEMI": 19.0, "SITE": 15.0}},
+        {"332004": {"EGREY JDS": 8.0, "IGUATEMI": 16.0, "SITE": 15.0}})
+    assert r["resumo"]["IGUATEMI"]["dif"] == 3.0
+    assert r["resumo"]["IGUATEMI"]["produtos"] == 1
+    assert r["resumo"]["EGREY JDS"]["dif"] == 0.0
+    assert r["resumo"]["SITE"]["produtos"] == 0
+
+
+def test_filial_que_so_existe_no_banco_nao_e_ignorada():
+    """Uma filial mapeada como `fora`, ou de nome novo, explicaria desvio
+    constante — e não está em nenhuma coluna do arquivo. Somar só as três lojas
+    conhecidas a esconderia."""
+    r = confere.por_loja(
+        ["A"], {"A": {"EGREY JDS": 10.0}},
+        {"A": {"EGREY JDS": 10.0, "OUTLET": 3.0}})
+    assert "OUTLET" in r["resumo"]
+    assert r["resumo"]["OUTLET"]["dif"] == -3.0
+
+
+def test_as_tres_lojas_aparecem_mesmo_sem_venda():
+    """Zero medido é diferente de loja ausente do relatório."""
+    r = confere.por_loja(["A"], {}, {})
+    assert set(r["resumo"]) == {"EGREY JDS", "IGUATEMI", "SITE"}
+    assert r["resumo"]["SITE"] == {"planilha": 0.0, "banco": 0.0, "dif": 0.0,
+                                  "produtos": 0}
+
+
+def test_desvio_espalhado_nas_tres_nao_se_concentra():
+    r = confere.por_loja(
+        ["A"], {"A": {"EGREY JDS": 11.0, "IGUATEMI": 11.0, "SITE": 11.0}},
+        {"A": {"EGREY JDS": 8.0, "IGUATEMI": 8.0, "SITE": 8.0}})
+    difs = {f: d["dif"] for f, d in r["resumo"].items()}
+    assert difs == {"EGREY JDS": 3.0, "IGUATEMI": 3.0, "SITE": 3.0}
+
+
+def test_a_tolerancia_vale_por_loja():
+    r = confere.por_loja(["A"], {"A": {"SITE": 11.0}}, {"A": {"SITE": 10.0}})
+    assert r["resumo"]["SITE"]["dif"] == 1.0
+    assert r["resumo"]["SITE"]["produtos"] == 0, "uma peca nao conta"
