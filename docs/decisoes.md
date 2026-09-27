@@ -1202,3 +1202,49 @@ Não é "os totais batem". É: **os dois componentes fecham, produto a produto, 
 AW26 e SS27**, e o que não fecha tem explicação nomeada. Enquanto houver
 divergência sem causa, a planilha continua sendo o registro — foi o que as D18,
 D19 e D22 cobraram nesta semana, todas as três por número que parecia certo.
+
+## D26 · O cadastro já sabia a coleção; faltava o cano até o banco
+
+A comparação de 27/09 achou 394 códigos na planilha, 739 no banco e **nenhum
+comparável**. Causa: `produto.colecao` vazia em todos.
+
+Nada disso era novidade — o negócio já tinha explicado, e a revisão da D11 já
+tinha registrado: no ERP a **coleção** diz a estação (VERÃO, INVERNO) e a
+**subcoleção** diz o ano; `coletor/produtos.py` monta a sigla desde então
+(`ESTACAO`: VERÃO→SS, INVERNO→AW; ano dos dois últimos dígitos da subcoleção),
+e `PERENE` são os Clássicos.
+
+O conhecimento estava pronto e parado num CSV. **O que não existia era a carga
+que o leva para a tabela `produto`** — nem para `colecao`, nem para `linha`.
+
+`sellout/db/cadastro.py` faz as duas, de fontes diferentes:
+
+```
+--cadastro produtos-erp.csv     colecao, descricao, divisao, grupo, marca, grade
+--planilha "sellout geral.xlsx" linha comercial: HOME, GLORIA KALIL, PIMA...
+```
+
+A linha comercial não é campo do ERP — é o nome do bloco das abas (D11).
+Enquanto viver só na planilha, o banco não sabe agrupar por ela, e o arquivo
+continua indispensável por esse motivo sozinho.
+
+**A sigla é o que se grava**, não VERÃO/2027: é como o negócio fala e é o que
+os blocos usam. Guardar a forma crua obrigaria cada consulta a remontar a
+sigla, e a regra ficaria repetida em todo lugar.
+
+**Coleção é do produto, não da venda.** Produto antigo pode vender no inverno
+seguinte; o sellout dele continua na coleção dele. Por isso é dimensão, gravada
+uma vez e corrigida quando o cadastro muda — nunca derivada da data do
+movimento.
+
+Coleção fora do mapa `ESTACAO` fica sem sigla, é **reportada** e some de
+qualquer recorte. Deixar isso calado seria repetir o defeito que travou a
+comparação.
+
+### A lição, que é a terceira vez nesta empreitada
+
+O dado existia, a regra estava escrita, e o que faltava era o trecho que liga
+um ao outro. Igual ao `entradas-erp.csv`, que era gerado e não era usado na
+linha existente (D18), e ao `coletor.vendas`, que sabia comparar e não sabia
+extrair. **Quando algo "já foi discutido" e mesmo assim não funciona, o
+suspeito não é a regra: é o cano.**
