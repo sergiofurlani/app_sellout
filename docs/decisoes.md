@@ -1155,3 +1155,50 @@ comparado com a coluna da planilha **de igual para igual**. Essa comparação é
 a prova que autoriza aposentar o arquivo — e é a única que vale, porque as
 três correções desta semana (D18, D19, D22) vieram de números que pareciam
 certos e não eram.
+
+## D25 · A prova que aposenta a planilha é por componente, não pelo percentual
+
+`sellout/db/confere.py`. Com a carga retroativa feita (D24), os dois lados
+enxergam a mesma janela e podem ser comparados. **Mas não pelo resultado
+final.**
+
+```
+50 / 200  =  25%
+25 / 100  =  25%
+```
+
+Os dois números errados, o percentual certo. Pelo quociente esse produto
+passaria como conferido. Foi assim que a extração de vendas quase passou com o
+sinal trocado em seis chaves da Jardins — o total batia.
+
+Então a comparação é **componente a componente**:
+
+| | planilha | banco |
+|---|---|---|
+| Estoque inicial | coluna J | abertura + movimentos |
+| Vendas | coluna I | snapshots |
+
+E o veredito separa **de que lado** está o desvio: só o Estoque inicial, só a
+Venda, ou os dois. Um relatório que diz apenas "difere" obriga a refazer a
+investigação inteira a cada produto.
+
+### O que fica de fora, e por quê
+
+**Coleção anterior a 2026.** A coluna Vendas totais acumula desde que o produto
+entrou na aba — 2023, para as antigas. O banco começa em 01/01/2026 (D10/D24).
+Comparar ali não mede nada: a planilha ganha sempre, por um motivo já conhecido,
+e contar isso como divergência afogaria o sinal de verdade. O corte é o mesmo da
+abertura: **AW26 e SS27**.
+
+**Código que existe de um lado só** é listado, nunca somado. É diferença de
+cadastro, não de número, e tratar como zero do outro lado inventaria um desvio.
+
+**Tolerância de uma peça.** Diferença de arredondamento de data de corte não
+vale discussão.
+
+### O critério para desligar a planilha
+
+Não é "os totais batem". É: **os dois componentes fecham, produto a produto, em
+AW26 e SS27**, e o que não fecha tem explicação nomeada. Enquanto houver
+divergência sem causa, a planilha continua sendo o registro — foi o que as D18,
+D19 e D22 cobraram nesta semana, todas as três por número que parecia certo.
