@@ -311,6 +311,22 @@ def main(argv=None):
                     print(f"    {x['codigo']:9} {x['planilha']:10} {x['erp']}")
                 if len(d["difere"]) > 25:
                     print(f"    ... e mais {len(d['difere']) - 25}")
+
+            # Contar sem listar nao serve para nada: e justamente esta lista
+            # que vai para o cadastro. Vai agrupada pela colecao que a planilha
+            # diz, porque no ERP eles vao ser corrigidos em lote.
+            if d["sem_colecao_erp"]:
+                from collections import defaultdict as _dd
+                por_col = _dd(list)
+                for x in d["sem_colecao_erp"]:
+                    por_col[x["planilha"]].append(x["codigo"])
+                print("\n    sem colecao no cadastro, pela colecao da planilha:")
+                for col, cods in sorted(por_col.items()):
+                    print(f"      {col:8} ({len(cods)})  {', '.join(sorted(cods))}")
+
+            if d["so_planilha"]:
+                print("\n    nao estao no cadastro: "
+                      + ", ".join(sorted(x["codigo"] for x in d["so_planilha"])))
             if d["difere"] or d["sem_colecao_erp"] or d["so_planilha"]:
                 print("\n  Esta e a lista de trabalho para arrumar o cadastro.")
                 print("  Enquanto ela nao zerar, o ERP ainda nao pode ser a unica")
