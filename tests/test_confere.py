@@ -258,3 +258,38 @@ def test_a_apuracao_usa_a_serie_do_proprio_codigo():
 def test_sem_serie_a_apuracao_nao_inventa_semana():
     (x,) = confere.apura([divergente()], {})
     assert x["casa_desde"] is None
+
+
+# --------------------------------- a planilha e o banco na mesma foto (27/09)
+
+def test_a_janela_casa_quando_a_planilha_roda_depois_do_domingo():
+    """As semanas do banco fecham no domingo; a planilha e rodada na segunda."""
+    assert confere.janela_casa(date(2026, 9, 21), date(2026, 9, 20))
+
+
+def test_uma_semana_de_diferenca_nao_casa():
+    """**O meu erro de 27/09.** Comparei a planilha de 21/09 com o banco cortado
+    em 14/09 e li o resultado como divergência de dado. Sete dias é uma semana
+    de venda a mais em um dos lados, em todos os produtos de uma vez."""
+    assert not confere.janela_casa(date(2026, 9, 21), date(2026, 9, 14))
+
+
+def test_o_mesmo_dia_casa():
+    assert confere.janela_casa(date(2026, 9, 14), date(2026, 9, 14))
+
+
+def test_corte_depois_da_planilha_nao_casa():
+    """Banco à frente é o mesmo defeito ao contrário — e é o que aconteceria ao
+    rodar `--ate` de hoje contra um arquivo da semana passada."""
+    assert not confere.janela_casa(date(2026, 9, 14), date(2026, 9, 20))
+
+
+def test_sem_data_no_cabecalho_nao_se_afirma_que_casa():
+    """Não achar a data é não saber. Devolver True aqui deixaria passar
+    justamente o arquivo cujo cabeçalho mudou de formato."""
+    assert not confere.janela_casa(None, date(2026, 9, 20))
+
+
+def test_seis_dias_e_o_limite():
+    assert confere.janela_casa(date(2026, 9, 26), date(2026, 9, 20))
+    assert not confere.janela_casa(date(2026, 9, 27), date(2026, 9, 20))

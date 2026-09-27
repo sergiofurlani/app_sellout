@@ -38,7 +38,7 @@ import argparse
 import pathlib
 import re
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 
 import openpyxl
 
@@ -96,6 +96,61 @@ def da_planilha(caminho: str) -> dict:
             d["colecao"] = d["colecao"] or de_linha.get(r, "")
     wb.close()
     return {c: dict(v) for c, v in por_codigo.items()}, sem_valor
+
+
+RE_DATA_COLUNA = re.compile(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?")
+
+
+def data_da_coluna_viva(caminho: str, ano: int | None = None):
+    """A data que a própria planilha escreve no cabeçalho da coluna de sellout.
+
+    **O erro de 27/09, do meu lado.** As colunas I e J são acumuladas até a
+    última rodada do arquivo — elas não têm data de corte, têm a data do
+    arquivo. Eu comparei `sellout geral 2109.xlsx` (acumulado até 21/09) com
+    `--ate 2026-09-14` e olhei o resultado como se fosse divergência de dado:
+    os 42 do 332004 são do arquivo de 21/09; o de 14/09 diz 43.
+
+    Uma semana de diferença em um dos lados produz exatamente o tipo de desvio
+    pequeno e espalhado que a gente passou o dia investigando. Como a planilha
+    diz a data dela no cabeçalho, isto deixa de depender de quem roda.
+    """
+    wb = openpyxl.load_workbook(caminho, data_only=True)
+    datas = []
+    for aba in ABAS_TRABALHO:
+        if aba not in wb.sheetnames:
+            continue
+        ws = wb[aba]
+        c = mapa_colunas(ws).get("K")
+        if not c:
+            continue
+        bruto = ws.cell(3, c).value
+        if isinstance(bruto, datetime):
+            datas.append(bruto.date())
+            continue
+        m = RE_DATA_COLUNA.search(str(bruto or ""))
+        if not m:
+            continue
+        dia, mes, a = int(m.group(1)), int(m.group(2)), m.group(3)
+        ano_ = int(a) if a else (ano or date.today().year)
+        if ano_ < 100:
+            ano_ += 2000
+        try:
+            datas.append(date(ano_, mes, dia))
+        except ValueError:
+            pass
+    wb.close()
+    return max(datas) if datas else None
+
+
+def janela_casa(coluna, ate: date) -> bool:
+    """A coluna viva da planilha e o corte do banco olham a mesma foto?
+
+    As semanas do banco fecham no domingo; a planilha é rodada no dia seguinte
+    ou poucos dias depois. Então a data do cabeçalho tem de cair de zero a seis
+    dias **depois** do corte. Sete dias é uma semana de venda a mais em um dos
+    lados, e é divergência inventada pela comparação, não medida por ela.
+    """
+    return coluna is not None and 0 <= (coluna - ate).days <= 6
 
 
 def nasceu_antes(corte: date) -> set:
@@ -272,6 +327,9 @@ def main(argv=None):
                    help="nao separa quem tem vida anterior ao corte")
     p.add_argument("--tolerancia", type=float, default=TOLERANCIA)
     p.add_argument("--limite", type=int, default=15)
+    p.add_argument("--aceitar-janela", action="store_true",
+                   help="compara mesmo que a data da planilha e o corte do\n"
+                        "                         banco estejam em semanas diferentes")
     p.add_argument("--apura", action="store_true",
                    help="cerca cada desvio de venda com a devolucao do periodo\n"
                         "                         e as datas de estreia dos dois lados")
@@ -287,6 +345,24 @@ def main(argv=None):
         print("\nA planilha nao tem valor guardado nas formulas.")
         print("Abra no Excel e salve uma vez — ou use um arquivo que veio de la.")
         return 1
+    coluna = data_da_coluna_viva(str(caminho), args.ate.year)
+    print(f"\n  coluna viva da planilha: {coluna or '(nao achei a data no cabecalho)'}"
+          f"   corte do banco: {args.ate}")
+    if coluna and not janela_casa(coluna, args.ate):
+        print("\n  ESSAS DUAS DATAS NAO OLHAM A MESMA FOTO.")
+        print("  As colunas I e J sao acumuladas ate a rodada do arquivo — elas nao")
+        print("  tem data de corte, tem a data do arquivo. Uma semana de diferenca")
+        print("  em um dos lados produz desvio pequeno e espalhado em centenas de")
+        print("  produtos, e ele parece divergencia de dado.")
+        dom = coluna
+        while dom.weekday() != 6:
+            dom = dom.fromordinal(dom.toordinal() - 1)
+        print(f"\n  Para esta planilha, use --ate {dom}"
+              " (o domingo que fecha a semana dela),")
+        print("  ou passe --aceitar-janela se a diferenca for intencional.")
+        if not args.aceitar_janela:
+            return 1
+
     ba = do_banco(args.ate)
     antigos = set() if args.com_antigos else nasceu_antes(args.corte)
     r = compara(pl, ba, args.colecoes.split(","), antigos)
