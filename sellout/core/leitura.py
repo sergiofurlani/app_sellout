@@ -634,7 +634,17 @@ def mapa_colunas(ws) -> dict:
         elif k.startswith("ESTOQUE INICIAL"):
             m["J"] = c
         elif k.startswith("CONSIGNA"):
-            m["E"] = c
+            # **Duas colunas, e a diferença entre elas é o assunto da D21.**
+            # "Consignado Real" é a consignação medida (remessa 14 − acerto 19);
+            # "Consignado" é o resto `= J − I − D`, a conta que fechava sempre
+            # por construção e engolia o erro das outras colunas. Pegar
+            # "qualquer coisa que comece com CONSIGNA e ficar com a última"
+            # acertava por ordem das colunas, não por regra — e a 2109 ganhou
+            # uma coluna nova justamente aí.
+            if "REAL" in k:
+                m["E"] = c
+            else:
+                m["E_CONTA"] = c
         elif k == "VENDAS TOTAIS":
             m["I"] = c
         elif k == "VENDAS JARDINS":
@@ -645,6 +655,10 @@ def mapa_colunas(ws) -> dict:
             m["SITE"] = c
         elif k.startswith("SELLOUT"):
             m["K"] = c
+    # Arquivo que só tem a coluna antiga: ela continua sendo onde a consignação
+    # é escrita. O contrário não vale — havendo a medida, é ela.
+    if "E" not in m and "E_CONTA" in m:
+        m["E"] = m["E_CONTA"]
     return m
 
 

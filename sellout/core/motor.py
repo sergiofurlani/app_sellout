@@ -249,6 +249,10 @@ def _processar_planilha(p, fontes, rotulo_data, escolhas, novos_por_aba, rel):
         col_sellout, col_inicial, col_atual = cols["K"], cols["J"], cols["D"]
         col_total = cols["I"]
         col_consig = cols.get("E")
+        # A coluna do resto `= J − I − D`, quando a planilha tem as duas. É
+        # contra ela que a medida é comparada: a diferença entre a conta e o
+        # medido é o erro que a fórmula vinha escondendo (D21).
+        col_conta = cols.get("E_CONTA") or col_consig
         filiais_cols = {k: cols[k] for k in ("JARDINS", "IGUATEMI", "SITE") if k in cols}
         max_orig = ws.max_row
         blocos = blocos_de(ws)
@@ -261,8 +265,8 @@ def _processar_planilha(p, fontes, rotulo_data, escolhas, novos_por_aba, rel):
         # Excel calculou. Guardado antes de ser sobrescrito porque a diferença
         # entre ele e a consignação medida **é** o erro acumulado que a
         # fórmula vinha escondendo (D21). Sem guardar agora, ele se perde.
-        cache_consig = ({r: ws_val.cell(r, col_consig).value
-                         for r in range(1, max_orig + 1)} if col_consig else {})
+        cache_consig = ({r: ws_val.cell(r, col_conta).value
+                         for r in range(1, max_orig + 1)} if col_conta else {})
         cache_vermelho = {r: vermelho(ws_rich.cell(r, 3).value) for r in range(1, max_orig + 1)}
         cache_desc = {r: texto(ws_rich.cell(r, 3).value) for r in range(1, max_orig + 1)}
 
