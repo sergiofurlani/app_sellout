@@ -163,3 +163,47 @@ def test_a_aba_de_origem_fica_registrada(tmp_path):
     onde = cadastro.da_planilha(planilha_com_blocos(tmp_path))
     assert onde["219054"]["aba"] == "Masculino"
     assert onde["334128"]["aba"] == "Feminino"
+
+
+# ----------------------------------------------------- excecoes de colecao
+
+def produto(codigo="212006", colecao="SS24"):
+    return {"codigo": codigo, "colecao": colecao, "descricao": "", "divisao": "",
+            "departamento": "", "grupo": "", "marca": "", "grade": ""}
+
+
+def test_a_excecao_sobrepoe_a_colecao_do_erp():
+    """Decisão do negócio em 27/09: nestes 21 códigos vale a planilha."""
+    ps = [produto()]
+    aplicadas, _ = cadastro.aplica_excecoes(ps, {"212006": "SS25"})
+    assert ps[0]["colecao"] == "SS25"
+    assert aplicadas == [{"codigo": "212006", "erp": "SS24", "decidida": "SS25"}]
+
+
+def test_produto_fora_da_lista_nao_e_tocado():
+    ps = [produto(codigo="999999", colecao="AW26")]
+    cadastro.aplica_excecoes(ps, {"212006": "SS25"})
+    assert ps[0]["colecao"] == "AW26"
+
+
+def test_excecao_que_ja_concorda_com_o_cadastro_e_apontada():
+    """**A lista precisa encolher.** Quando o cadastro for corrigido, a exceção
+    vira linha morta — e exceção que ninguém tira acaba escondendo uma decisão
+    que já não vale."""
+    ps = [produto(colecao="SS25")]
+    aplicadas, redundantes = cadastro.aplica_excecoes(ps, {"212006": "SS25"})
+    assert aplicadas == []
+    assert redundantes == ["212006"]
+
+
+def test_o_arquivo_de_excecoes_e_lido_do_repositorio():
+    """Versionado, com motivo e data: ajuste de dimensão sem rastro é o tipo de
+    coisa que ninguém explica seis meses depois."""
+    e = cadastro.le_excecoes()
+    assert e["212006"] == "SS25"
+    assert e["338005"] == "AW26", "o ERP dizia SS27 neste"
+    assert len(e) == 21
+
+
+def test_sem_arquivo_nao_ha_excecao(tmp_path):
+    assert cadastro.le_excecoes(tmp_path / "nao-existe.csv") == {}

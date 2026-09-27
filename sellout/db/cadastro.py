@@ -41,6 +41,51 @@ from .conexao import conectar, por_que_nao
 # "FEMININO - HOME" e isso não é coleção nenhuma (D11).
 COLECAO_CLASSICOS = "PERENE"
 
+# Onde o negócio decidiu manter a classificação da planilha contra o que o
+# cadastro do ERP diz. Fica em arquivo versionado, com motivo e data, porque
+# ajuste de dimensão sem rastro é o tipo de coisa que ninguém explica seis
+# meses depois — e porque a lista precisa **encolher**: quando o cadastro for
+# corrigido, a exceção vira redundante e o programa avisa que pode sair.
+EXCECOES = pathlib.Path(__file__).resolve().parents[2] / "docs" / "colecao-excecoes.csv"
+
+
+def le_excecoes(caminho=None) -> dict:
+    """{codigo: colecao} decidida pelo negócio. Ausente devolve vazio."""
+    caminho = pathlib.Path(caminho or EXCECOES)
+    if not caminho.exists():
+        return {}
+    fora = {}
+    with open(caminho, newline="", encoding="utf-8-sig") as f:
+        for linha in csv.DictReader(f, delimiter=";"):
+            cod = norm_codigo(linha.get("codigo"))
+            col = (linha.get("colecao") or "").strip().upper()
+            if cod and col:
+                fora[cod] = col
+    return fora
+
+
+def aplica_excecoes(produtos, excecoes) -> tuple[list, list]:
+    """Sobrepõe a coleção do ERP onde o negócio decidiu.
+
+    Devolve também o que **mudou de fato**: exceção que hoje diz o mesmo que o
+    cadastro já não é exceção, é linha morta na lista, e some sozinha da
+    próxima vez que alguém olhar.
+    """
+    aplicadas = []
+    for p in produtos:
+        escolhida = excecoes.get(p["codigo"])
+        if not escolhida:
+            continue
+        if escolhida != p["colecao"]:
+            aplicadas.append({"codigo": p["codigo"], "erp": p["colecao"],
+                              "decidida": escolhida})
+            p["colecao"] = escolhida
+    redundantes = [c for c, col in excecoes.items()
+                   if any(p["codigo"] == c and p["colecao"] == col
+                          for p in produtos)
+                   and not any(a["codigo"] == c for a in aplicadas)]
+    return aplicadas, redundantes
+
 
 def do_cadastro(caminho: str) -> tuple[list[dict], dict]:
     """Lê o produtos-erp.csv. A coleção gravada é a **sigla** (SS27, AW26).
@@ -189,6 +234,8 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Semeia colecao e linha comercial")
     p.add_argument("--cadastro", help="produtos-erp.csv do coletor.produtos")
     p.add_argument("--planilha", help="sellout geral.xlsx, para a linha comercial")
+    p.add_argument("--excecoes", default=None,
+                   help=f"padrao: {EXCECOES.name} em docs/")
     p.add_argument("--aplicar", action="store_true")
     args = p.parse_args(argv)
 
@@ -207,6 +254,24 @@ def main(argv=None):
             print(f"\nNao encontrei: {caminho}")
             return 1
         produtos, sem_sigla = do_cadastro(str(caminho))
+
+        excecoes = le_excecoes(args.excecoes)
+        if excecoes:
+            aplicadas, redundantes = aplica_excecoes(produtos, excecoes)
+            print(f"\nExcecoes de colecao: {len(excecoes)} no arquivo, "
+                  f"{len(aplicadas)} mudaram a colecao do ERP")
+            for a in aplicadas[:25]:
+                print(f"    {a['codigo']:9} {a['erp'] or '(vazia)':8} -> {a['decidida']}")
+            if redundantes:
+                print(f"\n  {len(redundantes)} exceção(oes) ja concordam com o "
+                      f"cadastro e podem sair do arquivo:")
+                print("    " + ", ".join(sorted(redundantes)))
+            nao_achadas = [c for c in excecoes
+                           if not any(p["codigo"] == c for p in produtos)]
+            if nao_achadas:
+                print(f"\n  {len(nao_achadas)} exceção(oes) de codigo que nao esta "
+                      f"no cadastro: {', '.join(sorted(nao_achadas))}")
+
         com = sum(1 for x in produtos if x["colecao"])
         print(f"\nCadastro: {len(produtos):,} produto(s), {com:,} com colecao")
         por_col = Counter(x["colecao"] for x in produtos if x["colecao"])

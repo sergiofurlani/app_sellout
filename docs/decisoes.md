@@ -1285,3 +1285,38 @@ manda quem for arrumar procurar no lugar errado.
 **O plano acordado:** o negócio arruma o cadastro do ERP; quando essa lista
 zerar, o ERP vira fonte única e a planilha sai também dessa função. Trocar de
 referência antes de medir a diferença seria mudar o chão sem saber a altura.
+
+## D27 · As 21 exceções de coleção ficam em arquivo versionado
+
+Na primeira auditoria do cadastro (D26), 21 produtos apareceram com coleção
+diferente entre a planilha e o ERP. Decidido pelo negócio em 27/09: **nestes,
+vale a planilha.**
+
+```
+codigo    planilha   cadastro
+212006    SS25       SS24
+216000    AW25       AW26
+217035    SS26       AW26
+218000    AW26       SS25
+338001    AW26       AW27      (e mais sete do mesmo grupo 338)
+...
+```
+
+**Onde isso mora:** `docs/colecao-excecoes.csv`, com código, coleção escolhida,
+motivo e data. Não no banco, e não no código.
+
+Ajuste de dimensão sem rastro é o tipo de coisa que ninguém explica seis meses
+depois — e se ficasse só no banco, a próxima carga do cadastro o apagaria sem
+avisar. Em arquivo versionado, a decisão sobrevive à recarga, aparece no
+histórico do git e pode ser discutida numa revisão.
+
+**A lista precisa encolher.** Ela é um andaime, não uma regra: o cadastro do
+ERP está sendo corrigido, e cada correção torna uma exceção redundante. Por
+isso o programa aponta, a cada rodada:
+
+- quantas **mudaram de fato** a coleção do ERP;
+- quais **já concordam** com o cadastro e podem sair do arquivo;
+- quais apontam para **código que nem está** no cadastro.
+
+Exceção que ninguém tira acaba escondendo uma decisão que já não vale. Fazer o
+programa cobrar a própria limpeza é mais barato do que lembrar de revisar.
