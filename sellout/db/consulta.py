@@ -43,6 +43,7 @@ empreitada.
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 from datetime import date
 
 from .conexao import conectar
@@ -215,6 +216,38 @@ def devolucoes(ate: date) -> dict:
             cur.execute(SQL_DEVOLUCOES, {"ate": ate, "papeis": list(PAPEIS_VENDA)})
             return {cod: {"pecas": float(p), "linhas": int(n)}
                     for cod, p, n in cur.fetchall()}
+
+
+SQL_SEMANAL_MUITOS = """
+SELECT v.codigo, s.data, sum(v.qtd) AS qtd,
+       sum(CASE WHEN v.qtd < 0 THEN v.qtd ELSE 0 END) AS devolucao
+  FROM venda v
+  JOIN snapshot s ON s.id = v.snapshot_id
+  LEFT JOIN filial f ON f.codigo = v.filial
+ WHERE s.data <= %(ate)s
+   AND coalesce(f.papel, 'fora') = ANY(%(papeis)s)
+   AND v.codigo = ANY(%(codigos)s)
+ GROUP BY v.codigo, s.data
+ ORDER BY v.codigo, s.data
+"""
+
+
+def series_semanais(codigos, ate: date) -> dict:
+    """{codigo: [(data, qtd, devolucao)]} — a série de muitos produtos de uma vez.
+
+    Uma consulta por produto seriam centenas de viagens até a Railway, o mesmo
+    defeito que tornou a gravação do cadastro lenta.
+    """
+    if not codigos:
+        return {}
+    fora = defaultdict(list)
+    with conectar() as c:
+        with c.cursor() as cur:
+            cur.execute(SQL_SEMANAL_MUITOS, {"ate": ate, "codigos": list(codigos),
+                                             "papeis": list(PAPEIS_VENDA)})
+            for cod, d, q, v in cur.fetchall():
+                fora[cod].append((d, float(q), float(v)))
+    return dict(fora)
 
 
 SQL_HISTORICO_CODIGO = """

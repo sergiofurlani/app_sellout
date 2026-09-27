@@ -192,7 +192,32 @@ def veredito(linhas, tolerancia=TOLERANCIA) -> dict:
             "pct_ok": (len(ok) / len(linhas)) if linhas else None}
 
 
-def apura(linhas, devolucoes, planilha_desde=None, tolerancia=TOLERANCIA) -> list:
+def desde_quando(semanas, alvo, tolerancia=TOLERANCIA):
+    """A semana a partir da qual o banco soma exatamente `alvo`.
+
+    Varre de trás para frente, acumulando. **Não propõe causa: localiza no
+    tempo.** Se a coluna da planilha vale 20 e o banco só chega a 20 somando de
+    março para cá, a divergência não está espalhada — está inteira nas semanas
+    anteriores a março, e é lá que se vai olhar.
+
+    É o que 330010 obrigou a construir. O histórico da planilha dele começa em
+    04/08 com 17,9% já acumulados: a coluna não conta desde 01/01, conta desde
+    que o produto entrou na aba, e essa data é de cada produto. Comparar com um
+    banco que conta desde janeiro mede a diferença de janela, não de dado.
+
+    Devolve None quando nenhuma semana serve — inclusive quando `alvo` é maior
+    que tudo que o banco tem, que é caso diferente e não pode virar data.
+    """
+    acumulado = 0.0
+    for data, qtd, _dev in reversed(list(semanas)):
+        acumulado += qtd
+        if abs(acumulado - alvo) <= tolerancia:
+            return data
+    return None
+
+
+def apura(linhas, devolucoes, planilha_desde=None, series=None,
+          tolerancia=TOLERANCIA) -> list:
     """Cerca cada divergência de venda com os números vizinhos.
 
     **Isto não explica nada — testa uma identidade.** A devolução entra em
@@ -210,6 +235,7 @@ def apura(linhas, devolucoes, planilha_desde=None, tolerancia=TOLERANCIA) -> lis
     Nenhum rótulo de causa: `resto` e as duas datas são o que a apuração tem.
     """
     planilha_desde = planilha_desde or {}
+    series = series or {}
     saida = []
     for l in linhas:
         dev = float(devolucoes.get(l["codigo"], {}).get("pecas", 0.0))
@@ -218,6 +244,16 @@ def apura(linhas, devolucoes, planilha_desde=None, tolerancia=TOLERANCIA) -> lis
         item["resto"] = l["dif_vendas"] + dev
         item["fecha_com_devolucao"] = bool(dev) and abs(item["resto"]) <= tolerancia
         item["planilha_desde"] = planilha_desde.get(l["codigo"])
+        # A saída bruta: o líquido com a devolução recolocada. Se o número da
+        # planilha cai entre o líquido e o bruto, ela conta parte do que voltou
+        # — e isso é medida, não explicação.
+        item["vendas_bruto"] = l["vendas_banco"] - dev
+        item["entre_liquido_e_bruto"] = (
+            min(l["vendas_banco"], item["vendas_bruto"]) - tolerancia
+            <= l["vendas_planilha"]
+            <= max(l["vendas_banco"], item["vendas_bruto"]) + tolerancia)
+        semanas = series.get(l["codigo"], [])
+        item["casa_desde"] = desde_quando(semanas, l["vendas_planilha"], tolerancia)
         saida.append(item)
     return saida
 
@@ -310,27 +346,45 @@ def main(argv=None):
         if not divergentes:
             print("\n  Nenhum desvio de venda para apurar.")
         else:
+            codigos = [x["codigo"] for x in divergentes]
             ap = apura(divergentes, consulta.devolucoes(args.ate),
-                       consulta.primeira_semana_planilha(), args.tolerancia)
+                       consulta.primeira_semana_planilha(),
+                       consulta.series_semanais(codigos, args.ate),
+                       args.tolerancia)
             fecham = [x for x in ap if x["fecha_com_devolucao"]]
+            casam = [x for x in ap if x["casa_desde"]]
+            brutos = [x for x in ap if x["entre_liquido_e_bruto"]]
             print(f"\n  apuracao — {len(divergentes)} produto(s) com desvio de venda")
-            print("  resto = (venda pl - venda bc) + devolucao. Zero significa que o")
-            print("  desvio tem o tamanho exato do que voltou no periodo.")
-            print(f'\n    {"codigo":8} {"venda pl":>8} {"venda bc":>8} {"dif":>6} '
-                  f'{"devol":>6} {"resto":>6}  {"bc desde":10} {"pl desde":10}')
-            print("    " + "-" * 76)
-            for x in sorted(ap, key=lambda y: (not y["fecha_com_devolucao"],
-                                               -abs(y["dif_vendas"])))[:args.limite * 2]:
+            print("  casa desde: semana a partir da qual o banco soma o numero da")
+            print("  planilha. Localiza o desvio no tempo; nao diz o porque.")
+            print(f'\n    {"codigo":8} {"venda pl":>8} {"liquido":>8} {"bruto":>7} '
+                  f'{"dif":>6} {"resto":>6}  {"bc desde":11} {"casa desde":11} {"pl desde":10}')
+            print("    " + "-" * 92)
+            for x in sorted(ap, key=lambda y: (y["casa_desde"] or date(1900, 1, 1),
+                                               -abs(y["dif_vendas"])))[:args.limite * 3]:
                 print(f'    {x["codigo"]:8} {x["vendas_planilha"]:>8,.0f} '
-                      f'{x["vendas_banco"]:>8,.0f} {x["dif_vendas"]:>6,.0f} '
-                      f'{x["devolucao"]:>6,.0f} {x["resto"]:>6,.0f}  '
-                      f'{str(x["venda_desde"] or "-"):10} '
+                      f'{x["vendas_banco"]:>8,.0f} {x["vendas_bruto"]:>7,.0f} '
+                      f'{x["dif_vendas"]:>6,.0f} {x["resto"]:>6,.0f}  '
+                      f'{str(x["venda_desde"] or "-"):11} '
+                      f'{str(x["casa_desde"] or "-"):11} '
                       f'{str(x["planilha_desde"] or "-"):10}')
-            print(f"\n    resto zero (dentro de {args.tolerancia:g}): "
-                  f"{len(fecham)} de {len(divergentes)}")
-            if len(fecham) < len(divergentes):
-                print("    Nos outros a devolucao NAO da conta do desvio — e esses sao")
-                print("    os que ainda nao tem numero que os cerque.")
+            print(f"\n    casam a partir de alguma semana  {len(casam):>4} de {len(divergentes)}")
+            print(f"    numero da planilha entre liquido e bruto  {len(brutos):>4}")
+            print(f"    desvio do tamanho exato da devolucao     {len(fecham):>4}")
+            if casam:
+                from collections import Counter
+                meses = Counter(x["casa_desde"].strftime("%Y-%m") for x in casam)
+                print("\n    em que mes cai a semana que casa:")
+                for m, n in sorted(meses.items()):
+                    print(f"      {m}  {n:>4}")
+                print("    Se agrupar num mes, a janela da planilha e outra e a")
+                print("    comparacao tem de comecar onde ela comeca. Se espalhar,")
+                print("    sao coincidencias de soma e isto nao mediu nada.")
+            sem_nada = [x for x in ap if not x["casa_desde"]
+                        and not x["entre_liquido_e_bruto"]]
+            if sem_nada:
+                print(f"\n    {len(sem_nada)} produto(s) que nenhuma dessas contas alcanca:")
+                print("    " + ", ".join(x["codigo"] for x in sem_nada[:20]))
 
     if r["so_planilha"] or r["so_banco"]:
         print(f"\n  codigo so na planilha: {len(r['so_planilha'])}   "

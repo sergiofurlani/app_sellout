@@ -197,3 +197,64 @@ def test_antigo_fora_da_colecao_alvo_continua_fora_da_janela():
                         ["SS27"], antigos={"A"})
     assert [l["codigo"] for l in r["fora_da_janela"]] == ["A"]
     assert r["vida_anterior"] == []
+
+
+# ------------------------------------- localizar o desvio no tempo (330010)
+
+def semanas(*pares):
+    return [(date.fromisoformat(d), float(q), 0.0) for d, q in pares]
+
+
+def test_acha_a_semana_a_partir_da_qual_o_banco_soma_o_numero_da_planilha():
+    """**O caso 330010.** O banco tem 46 desde janeiro; a planilha diz 20. Somando
+    de 2026-03-29 para cá dá 19 — dentro da tolerância. O desvio não está
+    espalhado: está inteiro nas semanas de janeiro e fevereiro."""
+    s = semanas(("2026-01-11", 27), ("2026-03-29", 1), ("2026-05-31", 1),
+                ("2026-08-02", 17))
+    assert confere.desde_quando(s, 20.0) == date(2026, 3, 29)
+
+
+def test_alvo_maior_que_tudo_que_o_banco_tem_nao_vira_data():
+    """**O caso 332004.** A planilha diz 42 e o banco tem 40 no total: não existe
+    semana que resolva isso, e devolver a primeira data faria parecer que
+    existe."""
+    assert confere.desde_quando(semanas(("2026-04-05", 40)), 42.0) is None
+
+
+def test_serie_vazia_nao_casa():
+    assert confere.desde_quando([], 20.0) is None
+
+
+def test_casa_na_semana_mais_recente_possivel():
+    """Varre de trás para frente: entre duas semanas que dão a mesma soma, a
+    mais recente é a afirmação menor — inclui menos dado no que se explica."""
+    s = semanas(("2026-01-04", 5), ("2026-02-01", 0), ("2026-03-01", 10))
+    assert confere.desde_quando(s, 10.0) == date(2026, 3, 1)
+
+
+def test_o_numero_da_planilha_entre_liquido_e_bruto_e_apontado():
+    """40 líquido, 49 bruto, planilha 42: ela conta parte do que voltou. É outra
+    conta que o líquido puro não alcança, e some se ninguém a mede."""
+    (x,) = confere.apura([divergente(pl=42, bc=40)],
+                         {"332004": {"pecas": -9.0, "linhas": 6}})
+    assert x["vendas_bruto"] == 49.0
+    assert x["entre_liquido_e_bruto"]
+    assert not x["fecha_com_devolucao"], "-9 nao e o tamanho do desvio de +2"
+
+
+def test_planilha_fora_da_faixa_liquido_bruto():
+    (x,) = confere.apura([divergente("330010", 20, 46)],
+                         {"330010": {"pecas": -12.0, "linhas": 8}})
+    assert x["vendas_bruto"] == 58.0
+    assert not x["entre_liquido_e_bruto"]
+
+
+def test_a_apuracao_usa_a_serie_do_proprio_codigo():
+    s = {"330010": semanas(("2026-01-11", 27), ("2026-03-29", 19))}
+    (x,) = confere.apura([divergente("330010", 20, 46)], {}, None, s)
+    assert x["casa_desde"] == date(2026, 3, 29)
+
+
+def test_sem_serie_a_apuracao_nao_inventa_semana():
+    (x,) = confere.apura([divergente()], {})
+    assert x["casa_desde"] is None
