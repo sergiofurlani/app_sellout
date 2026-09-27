@@ -109,3 +109,30 @@ def test_a_colecao_do_banco_ainda_serve_de_reserva():
     r = confere.compara({"334128": lado(100, 40)},
                         {"334128": banco(100, 40, "AW26")}, ["AW26"])
     assert len(r["comparaveis"]) == 1
+
+
+def test_vida_anterior_sai_do_veredito():
+    """**Separado por dado, não por aparência.** Produto que já vendia antes de
+    2026 tem o mesmo pedaço faltando dos dois lados — a divergência dele está
+    explicada antes de qualquer investigação, e mantê-lo no veredito afogaria
+    o sinal do que não está."""
+    r = confere.compara({"A": lado(100, 40), "B": lado(300, 250)},
+                        {"A": banco(100, 40), "B": banco(120, 100)},
+                        ["SS27"], antigos={"B"})
+    assert [l["codigo"] for l in r["comparaveis"]] == ["A"]
+    assert [l["codigo"] for l in r["vida_anterior"]] == ["B"]
+    assert confere.veredito(r["comparaveis"])["pct_ok"] == 1.0
+
+
+def test_sem_lista_de_antigos_nada_muda():
+    r = confere.compara({"A": lado(100, 40)}, {"A": banco(100, 40)}, ["SS27"])
+    assert len(r["comparaveis"]) == 1 and r["vida_anterior"] == []
+
+
+def test_antigo_fora_da_colecao_alvo_continua_fora_da_janela():
+    """As duas exclusões não se confundem: coleção antiga é recorte, vida
+    anterior é janela de dado."""
+    r = confere.compara({"A": lado(10, 5)}, {"A": banco(10, 5, "AW24")},
+                        ["SS27"], antigos={"A"})
+    assert [l["codigo"] for l in r["fora_da_janela"]] == ["A"]
+    assert r["vida_anterior"] == []

@@ -45,6 +45,7 @@ import openpyxl
 from ..core.leitura import (ABAS_TRABALHO, blocos_de, mapa_colunas,
                             norm_codigo)
 from . import abertura, consulta
+from .conexao import conectar
 
 RE_CODIGO = re.compile(r"^\d{5,6}$")
 # Diferença que não vale discussão: uma peça a mais ou a menos num produto sai
@@ -97,6 +98,25 @@ def da_planilha(caminho: str) -> dict:
     return {c: dict(v) for c, v in por_codigo.items()}, sem_valor
 
 
+def nasceu_antes(corte: date) -> set:
+    """Códigos com histórico de sellout **anterior** ao corte.
+
+    A planilha acumula venda e estoque inicial desde que o produto entrou na
+    aba — 2023, para muitos. O banco começa em 01/01/2026 (D10/D24). Num
+    produto assim, falta o mesmo pedaço dos dois lados, e a divergência está
+    explicada antes de qualquer investigação.
+
+    Separar isso **com dado** é o que evita chamar de "produto antigo" um
+    grupo escolhido a olho. A fonte é `sellout_historico`, que tem a data de
+    cada semana por código desde 2022.
+    """
+    with conectar() as c:
+        with c.cursor() as cur:
+            cur.execute("SELECT codigo FROM sellout_historico "
+                        "GROUP BY codigo HAVING min(data) < %s", (corte,))
+            return {r[0] for r in cur.fetchall()}
+
+
 def do_banco(ate: date) -> dict:
     """{codigo: {...}} — as cores somadas, porque a planilha é por produto."""
     por_codigo = defaultdict(lambda: {"estoque_inicial": 0.0, "vendas": 0.0,
@@ -109,10 +129,16 @@ def do_banco(ate: date) -> dict:
     return dict(por_codigo)
 
 
-def compara(planilha: dict, banco: dict, comparaveis) -> dict:
-    """Junta os dois lados e separa o que dá para comparar do que não dá."""
+def compara(planilha: dict, banco: dict, comparaveis, antigos=()) -> dict:
+    """Junta os dois lados e separa o que dá para comparar do que não dá.
+
+    `antigos` são os códigos com vida anterior à janela do banco. Eles saem do
+    veredito por **dado**, não por aparência: a diferença deles já está
+    explicada, e mantê-los afogaria o sinal do que não está.
+    """
     alvo = {c.upper() for c in comparaveis}
-    linhas, fora, so_planilha, so_banco = [], [], [], []
+    antigos = set(antigos)
+    linhas, fora, so_planilha, so_banco, anteriores = [], [], [], [], []
 
     for cod in sorted(set(planilha) | set(banco)):
         p, b = planilha.get(cod), banco.get(cod)
@@ -135,9 +161,15 @@ def compara(planilha: dict, banco: dict, comparaveis) -> dict:
         item["dif_vendas"] = item["vendas_planilha"] - item["vendas_banco"]
         item["sellout_planilha"] = consulta.percentual(p["vendas"], p["estoque_inicial"])
         item["sellout_banco"] = consulta.percentual(b["vendas"], b["estoque_inicial"])
-        (linhas if item["colecao"] in alvo else fora).append(item)
+        if item["colecao"] not in alvo:
+            fora.append(item)
+        elif cod in antigos:
+            anteriores.append(item)
+        else:
+            linhas.append(item)
 
     return {"comparaveis": linhas, "fora_da_janela": fora,
+            "vida_anterior": anteriores,
             "so_planilha": so_planilha, "so_banco": so_banco}
 
 
@@ -163,6 +195,11 @@ def main(argv=None):
                    help="a data da coluna viva da planilha, para os dois lados\n"
                         "                         olharem a mesma foto")
     p.add_argument("--colecoes", default=",".join(abertura.RECONSTRUIDAS))
+    p.add_argument("--corte", type=date.fromisoformat, default=abertura.DATA_BASE,
+                   help="inicio da janela do banco; produto com historico\n"
+                        "                         anterior sai do veredito (padrao 2026-01-01)")
+    p.add_argument("--com-antigos", action="store_true",
+                   help="nao separa quem tem vida anterior ao corte")
     p.add_argument("--tolerancia", type=float, default=TOLERANCIA)
     p.add_argument("--limite", type=int, default=15)
     args = p.parse_args(argv)
@@ -178,7 +215,8 @@ def main(argv=None):
         print("Abra no Excel e salve uma vez — ou use um arquivo que veio de la.")
         return 1
     ba = do_banco(args.ate)
-    r = compara(pl, ba, args.colecoes.split(","))
+    antigos = set() if args.com_antigos else nasceu_antes(args.corte)
+    r = compara(pl, ba, args.colecoes.split(","), antigos)
     v = veredito(r["comparaveis"], args.tolerancia)
 
     print(f"\nBanco x planilha ate {args.ate}  —  colecoes {args.colecoes}")
@@ -234,6 +272,14 @@ def main(argv=None):
         print(f"\n  codigo so na planilha: {len(r['so_planilha'])}   "
               f"so no banco: {len(r['so_banco'])}")
         print("  (diferenca de cadastro, nao de numero — nao entra no veredito)")
+    if r.get("vida_anterior"):
+        n = len(r["vida_anterior"])
+        v2 = veredito(r["vida_anterior"], args.tolerancia)
+        print(f"\n  {n} produto(s) com historico ANTERIOR a {args.corte}: fora do")
+        print("  veredito. A planilha acumula desde que o produto entrou na aba;")
+        print("  o banco comeca no corte. Falta o mesmo pedaco dos dois lados.")
+        print(f"  (se entrassem, fechariam {v2['ok']} de {n})")
+
     if r["fora_da_janela"]:
         print(f"\n  {len(r['fora_da_janela'])} produto(s) de colecao anterior a "
               f"2026: fora da comparacao.")

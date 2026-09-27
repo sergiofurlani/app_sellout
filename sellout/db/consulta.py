@@ -149,6 +149,36 @@ def sellout(ate: date, colecao=None, linha=None, codigo=None) -> list[dict]:
     return linhas
 
 
+SQL_SEMANAL = """
+SELECT s.data, s.origem, coalesce(f.papel, 'fora') AS papel,
+       sum(v.qtd) AS qtd
+  FROM venda v
+  JOIN snapshot s ON s.id = v.snapshot_id
+  LEFT JOIN filial f ON f.codigo = v.filial
+ WHERE v.codigo = %(codigo)s
+ GROUP BY s.data, s.origem, coalesce(f.papel, 'fora')
+ ORDER BY s.data
+"""
+
+
+def serie_semanal(codigo: str) -> list[dict]:
+    """A venda de um produto, semana a semana, como está no banco.
+
+    É a ferramenta de apuração: total que não bate pode ser uma semana
+    faltando, uma semana em dobro ou uma filial no papel errado — e as três
+    parecem iguais quando se olha só o acumulado.
+
+    Por isso vem separado por `origem` (a carga retroativa do ERP e as rodadas
+    de upload) e por `papel` da filial: venda que caiu em `fora` não entra no
+    sellout, e some sem avisar.
+    """
+    with conectar() as c:
+        with c.cursor() as cur:
+            cur.execute(SQL_SEMANAL, {"codigo": codigo.strip()})
+            return [{"data": d, "origem": o, "papel": p, "qtd": float(q)}
+                    for d, o, p, q in cur.fetchall()]
+
+
 def resumo(linhas) -> dict:
     """Totais do conjunto. O percentual é da soma, não média das linhas.
 
@@ -174,8 +204,29 @@ def main(argv=None):
     p.add_argument("--colecao")
     p.add_argument("--linha", help="linha comercial: HOME, PIMA, CASHMERE...")
     p.add_argument("--codigo")
+    p.add_argument("--semanal", action="store_true",
+                   help="com --codigo: a serie semanal daquele produto")
     p.add_argument("--limite", type=int, default=20)
     args = p.parse_args(argv)
+
+    if args.codigo and args.semanal:
+        serie = serie_semanal(args.codigo)
+        if not serie:
+            print(f"\nSem venda no banco para o codigo {args.codigo}.")
+            return 1
+        print(f"\nVenda semana a semana — {args.codigo}\n")
+        print(f"  {'data':12} {'origem':8} {'papel':11} {'qtd':>6}")
+        print("  " + "-" * 40)
+        for x in serie:
+            print(f"  {str(x['data']):12} {x['origem']:8} {x['papel']:11} "
+                  f"{x['qtd']:>6,.0f}")
+        no_sellout = sum(x["qtd"] for x in serie if x["papel"] in PAPEIS_VENDA)
+        de_fora = sum(x["qtd"] for x in serie if x["papel"] not in PAPEIS_VENDA)
+        print(f"\n  no sellout {no_sellout:,.0f}" +
+              (f"   fora (papel errado?) {de_fora:,.0f}" if de_fora else ""))
+        datas = sorted({x["data"] for x in serie})
+        print(f"  {len(datas)} semana(s), de {datas[0]} a {datas[-1]}")
+        return 0
 
     linhas = sellout(args.ate, args.colecao, args.linha, args.codigo)
     if not linhas:
