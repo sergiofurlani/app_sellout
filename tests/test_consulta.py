@@ -93,3 +93,24 @@ def test_o_filtro_de_colecao_nao_inventa_linha():
     ss27 = consulta.sellout(date.today(), colecao="SS27")
     assert len(ss27) <= len(todas)
     assert all((l["colecao"] or "").upper() == "SS27" for l in ss27)
+
+
+def test_a_serie_recorta_pela_data_de_comparacao():
+    """**O erro de 27/09.** A série de 332004 veio com a semana de 20/09 dentro
+    enquanto a comparação parava em 14/09: qualquer conta feita em cima dela
+    erra por uma semana e parece certa. O recorte é parâmetro, não conselho."""
+    assert "%(ate)s::date IS NULL OR s.data <= %(ate)s::date" in consulta.SQL_SEMANAL
+
+
+def test_a_serie_mostra_a_devolucao_separada_do_liquido():
+    """O `sum` líquido esconde devolução compensada por venda na mesma semana e
+    filial — e era justamente a devolução que estava sem número."""
+    assert "CASE WHEN v.qtd < 0" in consulta.SQL_SEMANAL
+    assert "CASE WHEN v.qtd < 0" in consulta.SQL_DEVOLUCOES or \
+           "v.qtd < 0" in consulta.SQL_DEVOLUCOES
+
+
+def test_a_devolucao_respeita_o_papel_da_filial():
+    """Devolução em filial de papel `fora` não está no numerador do sellout;
+    somá-la aqui criaria um resto que não corresponde a desvio nenhum."""
+    assert "f.papel, 'fora') = ANY(%(papeis)s)" in consulta.SQL_DEVOLUCOES

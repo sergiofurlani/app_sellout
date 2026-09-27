@@ -151,17 +151,19 @@ def sellout(ate: date, colecao=None, linha=None, codigo=None) -> list[dict]:
 
 SQL_SEMANAL = """
 SELECT s.data, s.origem, coalesce(f.papel, 'fora') AS papel,
-       sum(v.qtd) AS qtd
+       sum(v.qtd) AS qtd,
+       sum(CASE WHEN v.qtd < 0 THEN v.qtd ELSE 0 END) AS devolucao
   FROM venda v
   JOIN snapshot s ON s.id = v.snapshot_id
   LEFT JOIN filial f ON f.codigo = v.filial
  WHERE v.codigo = %(codigo)s
+   AND (%(ate)s::date IS NULL OR s.data <= %(ate)s::date)
  GROUP BY s.data, s.origem, coalesce(f.papel, 'fora')
  ORDER BY s.data
 """
 
 
-def serie_semanal(codigo: str) -> list[dict]:
+def serie_semanal(codigo: str, ate: date | None = None) -> list[dict]:
     """A venda de um produto, semana a semana, como está no banco.
 
     É a ferramenta de apuração: total que não bate pode ser uma semana
@@ -171,12 +173,82 @@ def serie_semanal(codigo: str) -> list[dict]:
     Por isso vem separado por `origem` (a carga retroativa do ERP e as rodadas
     de upload) e por `papel` da filial: venda que caiu em `fora` não entra no
     sellout, e some sem avisar.
+
+    **`ate` existe porque série e comparação têm de olhar a mesma janela.** A
+    primeira versão trazia tudo, e a série de 332004 chegou com a semana de
+    20/09 dentro enquanto a comparação parava em 14/09: a conta que se faz em
+    cima disso erra por uma semana e parece certa.
+
+    `devolucao` é a parte negativa da mesma célula. O `sum` líquido esconde
+    uma devolução compensada por uma venda na mesma semana e filial — e
+    devolução foi justamente o que sobrou sem explicação em 27/09.
     """
     with conectar() as c:
         with c.cursor() as cur:
-            cur.execute(SQL_SEMANAL, {"codigo": codigo.strip()})
-            return [{"data": d, "origem": o, "papel": p, "qtd": float(q)}
-                    for d, o, p, q in cur.fetchall()]
+            cur.execute(SQL_SEMANAL, {"codigo": codigo.strip(), "ate": ate})
+            return [{"data": d, "origem": o, "papel": p, "qtd": float(q),
+                     "devolucao": float(v)}
+                    for d, o, p, q, v in cur.fetchall()]
+
+
+SQL_DEVOLUCOES = """
+SELECT v.codigo, sum(v.qtd) AS pecas, count(*) AS linhas
+  FROM venda v
+  JOIN snapshot s ON s.id = v.snapshot_id
+  LEFT JOIN filial f ON f.codigo = v.filial
+ WHERE v.qtd < 0
+   AND s.data <= %(ate)s
+   AND coalesce(f.papel, 'fora') = ANY(%(papeis)s)
+ GROUP BY v.codigo
+"""
+
+
+def devolucoes(ate: date) -> dict:
+    """{codigo: {pecas, linhas}} — o que voltou, por código, até a data.
+
+    Fica separado do total porque o número gravado em `venda` já é líquido: a
+    devolução está lá dentro, subtraída, e não aparece em nenhuma soma. Quem
+    compara com uma coluna que talvez conte só a saída não tem como ver isso.
+    """
+    with conectar() as c:
+        with c.cursor() as cur:
+            cur.execute(SQL_DEVOLUCOES, {"ate": ate, "papeis": list(PAPEIS_VENDA)})
+            return {cod: {"pecas": float(p), "linhas": int(n)}
+                    for cod, p, n in cur.fetchall()}
+
+
+SQL_HISTORICO_CODIGO = """
+SELECT data, cores, percentual
+  FROM sellout_historico
+ WHERE codigo = %(codigo)s
+   AND (%(ate)s::date IS NULL OR data <= %(ate)s::date)
+ ORDER BY data, cores
+"""
+
+
+def serie_planilha(codigo: str, ate: date | None = None) -> list[dict]:
+    """O mesmo produto, semana a semana, **como a planilha registrou**.
+
+    É o outro lado da apuração. Dessas colunas só sobrou o percentual (D-do
+    `002_historico.sql`): vendas e estoque inicial de cada semana não foram
+    guardados. Não dá para conferir peça a peça, mas dá para ver em que semana
+    a planilha começou a contar o produto — e é exatamente isso que separa
+    "falta venda no banco" de "a planilha conta desde outra data".
+    """
+    with conectar() as c:
+        with c.cursor() as cur:
+            cur.execute(SQL_HISTORICO_CODIGO, {"codigo": codigo.strip(), "ate": ate})
+            return [{"data": d, "cores": cs, "percentual": float(p)}
+                    for d, cs, p in cur.fetchall()]
+
+
+def primeira_semana_planilha() -> dict:
+    """{codigo: primeira data com percentual na planilha}."""
+    with conectar() as c:
+        with c.cursor() as cur:
+            cur.execute("SELECT codigo, min(data) FROM sellout_historico "
+                        "GROUP BY codigo")
+            return {cod: d for cod, d in cur.fetchall()}
 
 
 def resumo(linhas) -> dict:
@@ -210,22 +282,41 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     if args.codigo and args.semanal:
-        serie = serie_semanal(args.codigo)
+        serie = serie_semanal(args.codigo, args.ate)
         if not serie:
-            print(f"\nSem venda no banco para o codigo {args.codigo}.")
+            print(f"\nSem venda no banco para o codigo {args.codigo} ate {args.ate}.")
             return 1
-        print(f"\nVenda semana a semana — {args.codigo}\n")
-        print(f"  {'data':12} {'origem':8} {'papel':11} {'qtd':>6}")
-        print("  " + "-" * 40)
+        print(f"\nVenda semana a semana — {args.codigo}  (ate {args.ate})\n")
+        print(f"  {'data':12} {'origem':8} {'papel':11} {'qtd':>6} {'devol':>7}")
+        print("  " + "-" * 48)
         for x in serie:
+            marca = f"{x['devolucao']:,.0f}" if x["devolucao"] else ""
             print(f"  {str(x['data']):12} {x['origem']:8} {x['papel']:11} "
-                  f"{x['qtd']:>6,.0f}")
+                  f"{x['qtd']:>6,.0f} {marca:>7}")
         no_sellout = sum(x["qtd"] for x in serie if x["papel"] in PAPEIS_VENDA)
         de_fora = sum(x["qtd"] for x in serie if x["papel"] not in PAPEIS_VENDA)
+        dev = sum(x["devolucao"] for x in serie if x["papel"] in PAPEIS_VENDA)
         print(f"\n  no sellout {no_sellout:,.0f}" +
               (f"   fora (papel errado?) {de_fora:,.0f}" if de_fora else ""))
         datas = sorted({x["data"] for x in serie})
         print(f"  {len(datas)} semana(s), de {datas[0]} a {datas[-1]}")
+        if dev:
+            print(f"\n  devolucao dentro desse numero: {dev:,.0f} peca(s).")
+            print(f"  A saida bruta foi {no_sellout - dev:,.0f}; o banco guarda o")
+            print("  liquido. Coluna que conte so a saida fica maior por isso.")
+
+        hist = serie_planilha(args.codigo, args.ate)
+        print(f"\n  A planilha, no historico dela (so o percentual foi guardado):")
+        if not hist:
+            print("    nenhuma semana — este codigo nao tem historico de planilha.")
+        else:
+            for x in hist[:6]:
+                print(f"    {str(x['data']):12} {x['cores'] or '-':8} "
+                      f"{x['percentual']:>7.1%}")
+            if len(hist) > 6:
+                print(f"    ... {len(hist) - 6} semana(s) a mais, ate {hist[-1]['data']}")
+            print(f"    primeira semana na planilha: {hist[0]['data']}"
+                  f"   no banco: {datas[0]}")
         return 0
 
     linhas = sellout(args.ate, args.colecao, args.linha, args.codigo)

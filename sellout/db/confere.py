@@ -120,12 +120,15 @@ def nasceu_antes(corte: date) -> set:
 def do_banco(ate: date) -> dict:
     """{codigo: {...}} — as cores somadas, porque a planilha é por produto."""
     por_codigo = defaultdict(lambda: {"estoque_inicial": 0.0, "vendas": 0.0,
-                                      "colecao": ""})
+                                      "colecao": "", "venda_desde": None})
     for l in consulta.sellout(ate):
         d = por_codigo[l["codigo"]]
         d["estoque_inicial"] += float(l["estoque_inicial"])
         d["vendas"] += float(l["vendas"])
         d["colecao"] = d["colecao"] or (l["colecao"] or "").upper()
+        desde = l.get("venda_desde")
+        if desde and (d["venda_desde"] is None or desde < d["venda_desde"]):
+            d["venda_desde"] = desde
     return dict(por_codigo)
 
 
@@ -161,6 +164,7 @@ def compara(planilha: dict, banco: dict, comparaveis, antigos=()) -> dict:
         item["dif_vendas"] = item["vendas_planilha"] - item["vendas_banco"]
         item["sellout_planilha"] = consulta.percentual(p["vendas"], p["estoque_inicial"])
         item["sellout_banco"] = consulta.percentual(b["vendas"], b["estoque_inicial"])
+        item["venda_desde"] = b.get("venda_desde")
         if item["colecao"] not in alvo:
             fora.append(item)
         elif cod in antigos:
@@ -188,6 +192,36 @@ def veredito(linhas, tolerancia=TOLERANCIA) -> dict:
             "pct_ok": (len(ok) / len(linhas)) if linhas else None}
 
 
+def apura(linhas, devolucoes, planilha_desde=None, tolerancia=TOLERANCIA) -> list:
+    """Cerca cada divergência de venda com os números vizinhos.
+
+    **Isto não explica nada — testa uma identidade.** A devolução entra em
+    `venda` com sinal negativo, e o total do banco já é líquido. Se uma coluna
+    conta só a saída, ela fica maior pelo tamanho exato do que voltou:
+
+        vendas_planilha − vendas_banco + devolucao == 0
+
+    `resto` é esse lado esquerdo. Zero em um produto é coincidência; zero nos
+    nove do grupo de −3, com a devolução de cada um sendo o seu próprio
+    número, não é. E se der diferente de zero, a hipótese morre aqui em vez de
+    virar conclusão — foi o que aconteceu com `vida_anterior`, que pegou 5 de
+    255.
+
+    Nenhum rótulo de causa: `resto` e as duas datas são o que a apuração tem.
+    """
+    planilha_desde = planilha_desde or {}
+    saida = []
+    for l in linhas:
+        dev = float(devolucoes.get(l["codigo"], {}).get("pecas", 0.0))
+        item = dict(l)
+        item["devolucao"] = dev
+        item["resto"] = l["dif_vendas"] + dev
+        item["fecha_com_devolucao"] = bool(dev) and abs(item["resto"]) <= tolerancia
+        item["planilha_desde"] = planilha_desde.get(l["codigo"])
+        saida.append(item)
+    return saida
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="Banco x planilha, por componente")
     p.add_argument("planilha")
@@ -202,6 +236,9 @@ def main(argv=None):
                    help="nao separa quem tem vida anterior ao corte")
     p.add_argument("--tolerancia", type=float, default=TOLERANCIA)
     p.add_argument("--limite", type=int, default=15)
+    p.add_argument("--apura", action="store_true",
+                   help="cerca cada desvio de venda com a devolucao do periodo\n"
+                        "                         e as datas de estreia dos dois lados")
     args = p.parse_args(argv)
 
     caminho = pathlib.Path(args.planilha.strip().strip("<>").strip('"').strip("'"))
@@ -267,6 +304,33 @@ def main(argv=None):
             print(f'    {l["codigo"]:8} {l["colecao"][:6]:6} '
                   f'{l["inicial_planilha"]:>10,.0f} {l["inicial_banco"]:>10,.0f} '
                   f'{l["vendas_planilha"]:>9,.0f} {l["vendas_banco"]:>9,.0f}')
+
+    if args.apura:
+        divergentes = v["so_vendas"] + v["ambos"]
+        if not divergentes:
+            print("\n  Nenhum desvio de venda para apurar.")
+        else:
+            ap = apura(divergentes, consulta.devolucoes(args.ate),
+                       consulta.primeira_semana_planilha(), args.tolerancia)
+            fecham = [x for x in ap if x["fecha_com_devolucao"]]
+            print(f"\n  apuracao — {len(divergentes)} produto(s) com desvio de venda")
+            print("  resto = (venda pl - venda bc) + devolucao. Zero significa que o")
+            print("  desvio tem o tamanho exato do que voltou no periodo.")
+            print(f'\n    {"codigo":8} {"venda pl":>8} {"venda bc":>8} {"dif":>6} '
+                  f'{"devol":>6} {"resto":>6}  {"bc desde":10} {"pl desde":10}')
+            print("    " + "-" * 76)
+            for x in sorted(ap, key=lambda y: (not y["fecha_com_devolucao"],
+                                               -abs(y["dif_vendas"])))[:args.limite * 2]:
+                print(f'    {x["codigo"]:8} {x["vendas_planilha"]:>8,.0f} '
+                      f'{x["vendas_banco"]:>8,.0f} {x["dif_vendas"]:>6,.0f} '
+                      f'{x["devolucao"]:>6,.0f} {x["resto"]:>6,.0f}  '
+                      f'{str(x["venda_desde"] or "-"):10} '
+                      f'{str(x["planilha_desde"] or "-"):10}')
+            print(f"\n    resto zero (dentro de {args.tolerancia:g}): "
+                  f"{len(fecham)} de {len(divergentes)}")
+            if len(fecham) < len(divergentes):
+                print("    Nos outros a devolucao NAO da conta do desvio — e esses sao")
+                print("    os que ainda nao tem numero que os cerque.")
 
     if r["so_planilha"] or r["so_banco"]:
         print(f"\n  codigo so na planilha: {len(r['so_planilha'])}   "

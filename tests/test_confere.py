@@ -129,6 +129,67 @@ def test_sem_lista_de_antigos_nada_muda():
     assert len(r["comparaveis"]) == 1 and r["vida_anterior"] == []
 
 
+# ------------------------------------------------------- apuracao do desvio
+
+def divergente(codigo="332004", pl=42, bc=39, desde=date(2026, 4, 5)):
+    return {"codigo": codigo, "vendas_planilha": float(pl),
+            "vendas_banco": float(bc), "dif_vendas": float(pl - bc),
+            "venda_desde": desde}
+
+
+def test_o_resto_zera_quando_a_devolucao_tem_o_tamanho_do_desvio():
+    """A identidade que se testa: o banco guarda venda líquida, então uma
+    coluna que conte só a saída fica maior pelo exato tamanho do que voltou."""
+    (x,) = confere.apura([divergente()], {"332004": {"pecas": -3.0, "linhas": 3}})
+    assert x["resto"] == 0.0
+    assert x["fecha_com_devolucao"]
+
+
+def test_sem_devolucao_no_periodo_o_desvio_fica_sem_numero_que_o_cerque():
+    """**O teste que mata a hipótese.** Produto com desvio e devolução zero não
+    pode ser atribuído a devolução — e `fecha_com_devolucao` falso é o que
+    impede o relatório de contá-lo como resolvido."""
+    (x,) = confere.apura([divergente()], {})
+    assert x["resto"] == 3.0
+    assert not x["fecha_com_devolucao"]
+
+
+def test_devolucao_do_tamanho_errado_nao_fecha():
+    (x,) = confere.apura([divergente()], {"332004": {"pecas": -1.0, "linhas": 1}})
+    assert x["resto"] == 2.0 and not x["fecha_com_devolucao"]
+
+
+def test_desvio_para_o_outro_lado_nao_e_fechado_por_devolucao():
+    """330010: o banco é que tem mais (venda pl 20, bc 48). Devolução só pode
+    inflar a planilha em relação ao banco; somá-la aqui afastaria o resto do
+    zero, e é isso que tem de acontecer."""
+    (x,) = confere.apura([divergente("330010", 20, 48, date(2026, 1, 4))],
+                         {"330010": {"pecas": -2.0, "linhas": 2}})
+    assert x["resto"] == -30.0 and not x["fecha_com_devolucao"]
+
+
+def test_devolucao_zero_nunca_fecha_nem_com_desvio_zero():
+    """Sem devolução não há o que fechar: `resto` zero com `devolucao` zero é
+    produto que já batia, não hipótese confirmada."""
+    (x,) = confere.apura([divergente(pl=39)], {})
+    assert x["resto"] == 0.0 and not x["fecha_com_devolucao"]
+
+
+def test_a_apuracao_traz_as_datas_de_estreia_dos_dois_lados():
+    """Serve para separar 'falta venda no banco' de 'a planilha conta desde
+    outra data' — as duas dão o mesmo desvio no acumulado."""
+    (x,) = confere.apura([divergente()], {},
+                         {"332004": date(2026, 3, 1)})
+    assert x["venda_desde"] == date(2026, 4, 5)
+    assert x["planilha_desde"] == date(2026, 3, 1)
+
+
+def test_a_apuracao_nao_mexe_nas_linhas_da_comparacao():
+    linha = divergente()
+    confere.apura([linha], {"332004": {"pecas": -3.0, "linhas": 3}})
+    assert "resto" not in linha
+
+
 def test_antigo_fora_da_colecao_alvo_continua_fora_da_janela():
     """As duas exclusões não se confundem: coleção antiga é recorte, vida
     anterior é janela de dado."""
