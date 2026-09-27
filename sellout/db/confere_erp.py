@@ -50,8 +50,34 @@ COLUNAS = {"filial": ("FILIAL",),
            "qtd": ("QTDE", "QTD", "QUANTIDADE")}
 
 
+# **A mesma loja com dois nomes.** O relatório do ERP escreve JARDINS; a API
+# devolve o código da filial, EGREY JDS. Não é defeito de dado nem de carga — e
+# sem isto a conferência acusa a loja inteira dos dois lados, 107 chaves "só na
+# exportação" e 104 "só no banco", como se nada batesse. Foi o que aconteceu na
+# primeira corrida, em 27/09.
+ALIAS_FILIAL = {"JARDINS": "EGREY JDS"}
+
+
 def nrm(v) -> str:
     return str(v or "").strip().upper()
+
+
+def filial_do_export(nome) -> str:
+    """O nome do relatório traduzido para o código da filial do banco."""
+    n = nrm(nome)
+    return ALIAS_FILIAL.get(n, n)
+
+
+def so_de_um_lado(export: dict, banco: dict) -> dict:
+    """{export: [filiais], banco: [filiais]} — nome que existe de um lado só.
+
+    É o sintoma de apelido faltando, e tem de gritar: uma loja que não casa por
+    nome produz centenas de divergências falsas e nenhuma pista de que o
+    problema é ortográfico. Vale para a loja nova que ninguém mapeou ainda.
+    """
+    fe = {k[2] for k in export}
+    fb = {k[2] for k in banco}
+    return {"export": sorted(fe - fb), "banco": sorted(fb - fe)}
 
 
 def mapa_do_export(ws) -> dict:
@@ -90,7 +116,7 @@ def do_export(caminho: str) -> tuple[dict, list]:
             avisos.append(f"linha {r}: quantidade nao numerica ({q!r})")
             continue
         chave = (cod, nrm(ws.cell(r, m["codigo_cor"]).value),
-                 nrm(ws.cell(r, m["filial"]).value))
+                 filial_do_export(ws.cell(r, m["filial"]).value))
         fora[chave] += float(q)
     wb.close()
     return dict(fora), avisos
@@ -211,6 +237,18 @@ def main(argv=None):
     ba = do_banco(snaps)
     r = compara(ex, ba)
     print(f"  banco:      {len(ba):,} chave(s)")
+
+    # Antes de qualquer número: nome que existe de um lado só invalida a leitura
+    # de tudo o que vem depois.
+    sozinhas = so_de_um_lado(ex, ba)
+    if sozinhas["export"] or sozinhas["banco"]:
+        print("\n  FILIAL COM NOME DE UM LADO SO — leia o resto com desconfianca:")
+        if sozinhas["export"]:
+            print(f"    so na exportacao do ERP: {', '.join(sozinhas['export'])}")
+        if sozinhas["banco"]:
+            print(f"    so no banco:             {', '.join(sozinhas['banco'])}")
+        print("    Se for a mesma loja com dois nomes, a conferencia acusa a loja")
+        print("    inteira duas vezes e nada bate. O apelido vai em ALIAS_FILIAL.")
     print(f"\n  total de pecas   ERP {r['total_erp']:>8,.0f}   "
           f"banco {r['total_banco']:>8,.0f}   "
           f"dif {r['total_erp'] - r['total_banco']:>+7,.0f}")

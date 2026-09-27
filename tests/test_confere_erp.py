@@ -137,3 +137,36 @@ def test_quantidade_nao_numerica_e_avisada_e_nao_somada(tmp_path):
 def test_linha_sem_codigo_e_ignorada(tmp_path):
     d, _ = confere_erp.do_export(export(tmp_path, linha(cod=""), linha()))
     assert len(d) == 1
+
+
+# ------------------------------- a mesma loja com dois nomes (27/09)
+
+def test_jardins_do_relatorio_e_egrey_jds_do_banco():
+    """**O achado da primeira corrida.** 211 das 219 divergências eram uma loja
+    com dois nomes: o relatório escreve JARDINS, a API devolve o código da
+    filial. Sem isto a conferência acusa a loja inteira dos dois lados."""
+    assert confere_erp.filial_do_export("JARDINS") == "EGREY JDS"
+    assert confere_erp.filial_do_export(" jardins ") == "EGREY JDS"
+
+
+def test_filial_sem_apelido_passa_como_esta():
+    assert confere_erp.filial_do_export("IGUATEMI") == "IGUATEMI"
+    assert confere_erp.filial_do_export("SITE") == "SITE"
+
+
+def test_o_apelido_e_aplicado_na_leitura(tmp_path):
+    d, _ = confere_erp.do_export(export(tmp_path, linha(fil="JARDINS")))
+    assert list(d) == [("332004", "0002", "EGREY JDS")]
+
+
+def test_nome_de_um_lado_so_e_denunciado():
+    """O sintoma do apelido faltando tem de gritar — vale para a loja nova que
+    ninguém mapeou ainda, que produziria centenas de divergências falsas."""
+    s = confere_erp.so_de_um_lado({chave(fil="OUTLET"): 1.0},
+                                  {chave(fil="EGREY JDS"): 1.0})
+    assert s == {"export": ["OUTLET"], "banco": ["EGREY JDS"]}
+
+
+def test_filiais_que_casam_nao_sao_denunciadas():
+    s = confere_erp.so_de_um_lado({chave(fil="SITE"): 1.0}, {chave(fil="SITE"): 2.0})
+    assert s == {"export": [], "banco": []}
