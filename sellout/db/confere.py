@@ -42,7 +42,8 @@ from datetime import date
 
 import openpyxl
 
-from ..core.leitura import ABAS_TRABALHO, mapa_colunas, norm_codigo
+from ..core.leitura import (ABAS_TRABALHO, blocos_de, mapa_colunas,
+                            norm_codigo)
 from . import abertura, consulta
 
 RE_CODIGO = re.compile(r"^\d{5,6}$")
@@ -61,13 +62,23 @@ def da_planilha(caminho: str) -> dict:
     """
     wb = openpyxl.load_workbook(caminho, data_only=True)
     por_codigo = defaultdict(lambda: {"estoque_inicial": 0.0, "vendas": 0.0,
-                                      "linhas": 0})
+                                      "linhas": 0, "colecao": ""})
     sem_valor = 0
     for aba in ABAS_TRABALHO:
         if aba not in wb.sheetnames:
             continue
         ws = wb[aba]
         cols = mapa_colunas(ws)
+        # **A coleção vem do bloco da planilha, não do banco.** A tabela
+        # `produto` só é preenchida pelas rodadas de upload, e a carga
+        # retroativa (D24) não passa por lá: filtrar pelo banco deixava a
+        # comparação com zero produtos, que foi o que aconteceu em 27/09.
+        # Quem sabe a coleção hoje é o nome do bloco — e o cadastro do ERP,
+        # que ainda não foi semeado no banco.
+        de_linha = {}
+        for b in blocos_de(ws):
+            for r in range(b["ini"], b["fim"] + 1):
+                de_linha[r] = (b["colecao"] or "").upper()
         for r in range(4, ws.max_row + 1):
             cod = norm_codigo(ws.cell(r, 2).value)
             if not cod or not RE_CODIGO.match(cod):
@@ -81,6 +92,7 @@ def da_planilha(caminho: str) -> dict:
             d["estoque_inicial"] += float(j)
             d["vendas"] += float(i)
             d["linhas"] += 1
+            d["colecao"] = d["colecao"] or de_linha.get(r, "")
     wb.close()
     return {c: dict(v) for c, v in por_codigo.items()}, sem_valor
 
@@ -112,7 +124,8 @@ def compara(planilha: dict, banco: dict, comparaveis) -> dict:
             continue
         item = {
             "codigo": cod,
-            "colecao": b["colecao"],
+            "colecao": p.get("colecao") or b["colecao"],
+            "colecao_banco": b["colecao"],
             "inicial_planilha": p["estoque_inicial"],
             "inicial_banco": b["estoque_inicial"],
             "vendas_planilha": p["vendas"],
@@ -174,7 +187,26 @@ def main(argv=None):
         print(f"  {sem_valor} linha(s) da planilha sem valor guardado, fora da conta")
 
     if not v["total"]:
-        print("\n  Nenhum produto comparavel. Confira as colecoes.")
+        # Um "nao deu" que nao diz por que obriga a pessoa a abrir o codigo.
+        # Foi o que esta mensagem fez em 27/09: 394 codigos de um lado, 739 do
+        # outro, e nenhuma pista de que o filtro de colecao era o culpado.
+        from collections import Counter
+        na_planilha = Counter((x.get("colecao") or "(vazio)") for x in pl.values())
+        no_banco = Counter((x.get("colecao") or "(vazio)") for x in ba.values())
+        print("\n  Nenhum produto comparavel — o filtro de colecao nao casou.")
+        print(f"\n  colecoes pedidas: {args.colecoes}")
+        print("\n  na planilha:")
+        for c, n in na_planilha.most_common(12):
+            print(f"    {c:12} {n:>5}")
+        print("\n  no banco (tabela produto):")
+        for c, n in no_banco.most_common(12):
+            print(f"    {c:12} {n:>5}")
+        if no_banco.get("(vazio)", 0) == len(ba):
+            print("\n  A tabela `produto` esta sem colecao em TODOS os codigos.")
+            print("  Ela so e preenchida pelas rodadas de upload; a carga")
+            print("  retroativa nao passa por la. Semeie do cadastro do ERP")
+            print("  (produtos-erp.csv, do coletor.produtos) — a colecao e campo")
+            print("  do cadastro desde a revisao da D11.")
         return 1
 
     print(f"\n  {v['total']} produto(s) comparavel(is), tolerancia de "

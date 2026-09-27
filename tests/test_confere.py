@@ -90,3 +90,22 @@ def test_as_cores_do_banco_somam_no_codigo(monkeypatch):
 
 def test_veredito_vazio_nao_divide_por_zero():
     assert confere.veredito([])["pct_ok"] is None
+
+
+def test_a_colecao_vem_da_planilha_quando_o_banco_nao_sabe():
+    """**O defeito de 27/09.** A tabela `produto` só é preenchida pelas rodadas
+    de upload, e a carga retroativa não passa por lá — filtrar a coleção pelo
+    banco deixou a comparação com zero produtos, tendo 394 códigos de um lado e
+    739 do outro. Quem sabe a coleção é o bloco da planilha."""
+    planilha = {"334128": {"estoque_inicial": 100.0, "vendas": 40.0,
+                           "colecao": "SS27"}}
+    r = confere.compara(planilha, {"334128": banco(100, 40, colecao="")},
+                        ["SS27"])
+    assert len(r["comparaveis"]) == 1
+    assert r["fora_da_janela"] == []
+
+
+def test_a_colecao_do_banco_ainda_serve_de_reserva():
+    r = confere.compara({"334128": lado(100, 40)},
+                        {"334128": banco(100, 40, "AW26")}, ["AW26"])
+    assert len(r["comparaveis"]) == 1
