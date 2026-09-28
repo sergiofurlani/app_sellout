@@ -160,11 +160,18 @@ def main(argv=None):
         print("\n  itens que ja vieram com quantidade negativa:")
         for e, n in sorted(r["itens_negativos"].items(), key=lambda x: -x[1]):
             print(f"    {e:26} {n:>6}")
-        print("    (o sinal usado e o do evento, nao o da quantidade)")
+        print("    (quantidade negativa manda; o sinal do evento so decide")
+        print("     quando ela e positiva)")
     if r["fora"]:
         print("\n  fora do sellout (atacado, producao, bazar):")
         for f, q in sorted(r["fora"].items(), key=lambda x: -x[1])[:6]:
             print(f"    {f:12} {q:>8,.0f}")
+        # Documento de filial que nao esta em LOJAS nem e SITE e descartado
+        # inteiro. Se uma devolucao de loja for lancada num codigo de filial
+        # diferente do da venda, ela cai aqui e a loja fica sem ela — que e
+        # exatamente o sintoma de 28/09: seis chaves em que o relatorio do ERP
+        # tem -1 na Jardins e a extracao nao tem linha nenhuma.
+        print(f"    LOJAS reconhecidas: {', '.join(sorted(LOJAS))}, SITE")
 
     n = grava(saldo, args.salvar)
     print(f"\n  {args.salvar}  ({n} linha(s))")
