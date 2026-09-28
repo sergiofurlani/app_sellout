@@ -107,6 +107,26 @@ SELECT k.codigo,
 """
 
 
+def foto_de_estoque(ate: date):
+    """A última rodada de upload até a data — a foto de onde sai `estoque_atual`.
+
+    **Existe porque zero e ausência não são a mesma coisa.** `estoque_atual`
+    vem do último snapshot de origem `upload`; não havendo nenhum na janela, a
+    coluna inteira sai zerada, em silêncio, e a `sobra` engole o estoque todo
+    como se fosse consignação ou erro. Foi o que a ficha do 330043 mostrou em
+    28/09: sobra de 120 peças num produto que a planilha dizia ter 146 na loja.
+
+    Devolve None quando não há foto — e aí quem for usar a sobra tem de saber
+    disso antes de olhar o número.
+    """
+    with conectar() as c, c.cursor() as cur:
+        cur.execute("SELECT id, data, quem FROM snapshot "
+                    " WHERE data <= %s AND origem = 'upload' "
+                    " ORDER BY data DESC, id DESC LIMIT 1", (ate,))
+        r = cur.fetchone()
+        return {"id": r[0], "data": r[1], "quem": r[2] or ""} if r else None
+
+
 def percentual(vendas, estoque_inicial):
     """Vendas sobre Estoque inicial — ou None quando não há denominador.
 

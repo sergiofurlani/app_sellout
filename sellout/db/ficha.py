@@ -30,7 +30,7 @@ from collections import defaultdict
 from datetime import date
 
 from ..core.leitura import ABAS_TRABALHO, mapa_colunas, norm_codigo
-from . import consulta
+from . import abertura as abertura_mod, consulta
 from .conexao import conectar
 
 SQL_MOVIMENTOS = """
@@ -157,9 +157,18 @@ def main(argv=None):
         print("  " + "-" * 62)
         print(f'  {"TOTAL":23} {r["estoque_inicial"]:>8,.0f} {r["vendas"]:>7,.0f} '
               f'{r["estoque_atual"]:>7,.0f} {r["sobra"]:>7,.0f} {s:>8}')
-        print(f"\n  estoque inicial − vendas − estoque atual = {r['sobra']:,.0f}")
-        print("  Essa sobra e consignacao mais erro. Ela nao acusa nada sozinha:")
-        print("  com a consignacao medida do lado, o que restar e que e erro.")
+        foto = consulta.foto_de_estoque(args.ate)
+        if foto is None:
+            print("\n  SEM FOTO DE ESTOQUE nesta janela: nenhuma rodada de upload ate")
+            print(f"  {args.ate}. A coluna `atual` sai zerada por ausencia, nao por")
+            print(f"  estar vazia, e a sobra de {r['sobra']:,.0f} engoliu o estoque inteiro.")
+            print("  NAO leia essa sobra. `confere_erp --listar` diz que datas existem.")
+        else:
+            print(f"\n  estoque inicial − vendas − estoque atual = {r['sobra']:,.0f}")
+            print(f"  (estoque atual da rodada de {foto['data']}"
+                  + (f", {foto['quem']}" if foto["quem"] else "") + ")")
+            print("  Essa sobra e consignacao mais erro. Ela nao acusa nada sozinha:")
+            print("  com a consignacao medida do lado, o que restar e que e erro.")
 
         # De onde vem o denominador: abertura e movimentos, separados.
         ab = abertura(cod, args.ate)
@@ -173,10 +182,31 @@ def main(argv=None):
             print(f'  {t:30} {d["qtd"]:>8,.0f}   ({d["linhas"]} linha(s))')
         print("  " + "-" * 40)
         print(f'  {"soma":30} {total_ab + sum(d["qtd"] for d in tipos.values()):>8,.0f}')
-        if not ab:
-            print("\n  SEM SALDO DE ABERTURA. O denominador comeca do zero e so cresce")
-            print("  pelos movimentos — produto que ja existia em 01/01 aparece menor")
-            print("  do que e, e o sellout dele, maior.")
+        if not ab and col.upper() in abertura_mod.RECONSTRUIDAS:
+            # Avisar aqui seria alarme falso, e alarme falso ensina a ignorar
+            # alarme. AW26 e SS27 nao sao congeladas **por decisao** (21/09):
+            # sao reconstruidas pelos movimentos do evento 106, que tem cor e
+            # tamanho de verdade. A pergunta certa nao e "cade a abertura" — e
+            # se esses movimentos estao completos desde a data-base.
+            print(f"\n  {col} nao tem saldo de abertura por projeto: o denominador e")
+            print(f"  reconstruido pelos movimentos desde {abertura_mod.DATA_BASE}.")
+            print("  Entao o que se confere aqui e se esses movimentos estao todos")
+            print(f"  la — o mais antigo deste produto e de {movs[0]['data'] if movs else '—'}.")
+        elif not ab:
+            print("\n  SEM SALDO DE ABERTURA, e esta colecao deveria ter um: ela nao")
+            print("  esta entre as reconstruidas "
+                  f"({', '.join(abertura_mod.RECONSTRUIDAS)}). O denominador comeca")
+            print("  do zero, o produto aparece menor do que e e o sellout, maior.")
+
+        if movs:
+            print("\n-- MOVIMENTO POR MES " + "-" * 48)
+            por_mes = defaultdict(float)
+            for m in movs:
+                por_mes[m["data"].strftime("%Y-%m")] += m["qtd"]
+            for mes in sorted(por_mes):
+                print(f"  {mes}  {por_mes[mes]:>8,.0f}")
+            print("  Mes vazio no comeco e a pergunta: o produto nao existia ainda,")
+            print("  ou a extracao nao alcancou aquele periodo?")
 
         pf = consulta.vendas_por_filial([cod], args.ate).get(cod, {})
         if pf:

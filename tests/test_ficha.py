@@ -106,3 +106,73 @@ def test_o_codigo_e_normalizado_antes_de_procurar(tmp_path):
     """A planilha guarda código como número em algumas linhas e como texto em
     outras; procurar pelo texto cru acha metade."""
     assert ficha.da_planilha(planilha(tmp_path), " 334019 ")
+
+
+# ------------------- zero por ausencia nao e zero medido (330043, 28/09)
+
+def test_a_ficha_avisa_quando_nao_ha_foto_de_estoque(monkeypatch, capsys):
+    """**O que a ficha do 330043 escondeu.** `estoque_atual` vem da última
+    rodada de upload; sem nenhuma na janela a coluna sai zerada em silêncio e a
+    sobra engole o estoque inteiro — 120 peças num produto que a planilha dizia
+    ter 146 na loja. Zero por ausência tem de ser dito."""
+    monkeypatch.setattr(ficha.consulta, "sellout",
+                        lambda ate, codigo=None: [
+                            {**linha(363, 243, 0), "cor": "", "descricao": "CALCA",
+                             "colecao": "AW26", "sellout": 0.669, "sobra": 120.0}])
+    monkeypatch.setattr(ficha.consulta, "foto_de_estoque", lambda ate: None)
+    monkeypatch.setattr(ficha, "abertura", lambda c, a: [{"codigo_cor": "0002",
+                                                         "qtd": 363.0,
+                                                         "desde": date(2026, 1, 1)}])
+    monkeypatch.setattr(ficha, "movimentos", lambda c, a: [])
+    monkeypatch.setattr(ficha.consulta, "vendas_por_filial", lambda cs, a: {})
+    ficha.main(["330043", "--ate", "2026-09-20"])
+    saida = capsys.readouterr().out
+    assert "SEM FOTO DE ESTOQUE" in saida
+    assert "NAO leia essa sobra" in saida
+
+
+def test_com_foto_a_sobra_vem_com_a_data_dela(monkeypatch, capsys):
+    monkeypatch.setattr(ficha.consulta, "sellout",
+                        lambda ate, codigo=None: [
+                            {**linha(100, 60, 30), "cor": "", "descricao": "BLUSA",
+                             "colecao": "SS27", "sellout": 0.6, "sobra": 10.0}])
+    monkeypatch.setattr(ficha.consulta, "foto_de_estoque",
+                        lambda ate: {"id": 1, "data": date(2026, 9, 21), "quem": "sergio"})
+    monkeypatch.setattr(ficha, "abertura", lambda c, a: [])
+    monkeypatch.setattr(ficha, "movimentos", lambda c, a: [])
+    monkeypatch.setattr(ficha.consulta, "vendas_por_filial", lambda cs, a: {})
+    ficha.main(["334019", "--ate", "2026-09-20"])
+    saida = capsys.readouterr().out
+    assert "SEM FOTO DE ESTOQUE" not in saida
+    assert "2026-09-21" in saida
+
+
+def test_colecao_reconstruida_sem_abertura_nao_e_alarme(monkeypatch, capsys):
+    """AW26 e SS27 não são congeladas **por decisão** (21/09): o denominador vem
+    dos movimentos do 106. Gritar "sem saldo de abertura" aqui é alarme falso, e
+    alarme falso ensina a ignorar alarme."""
+    monkeypatch.setattr(ficha.consulta, "sellout", lambda ate, codigo=None: [
+        {**linha(363, 243, 0), "cor": "", "descricao": "CALCA", "colecao": "AW26",
+         "sellout": 0.669, "sobra": 120.0}])
+    monkeypatch.setattr(ficha.consulta, "foto_de_estoque", lambda ate: None)
+    monkeypatch.setattr(ficha, "abertura", lambda c, a: [])
+    monkeypatch.setattr(ficha, "movimentos", lambda c, a: [mov(data="2026-02-23")])
+    monkeypatch.setattr(ficha.consulta, "vendas_por_filial", lambda cs, a: {})
+    ficha.main(["330043", "--ate", "2026-09-20"])
+    saida = capsys.readouterr().out
+    assert "SEM SALDO DE ABERTURA" not in saida
+    assert "nao tem saldo de abertura por projeto" in saida
+    assert "2026-02-23" in saida
+
+
+def test_colecao_nao_reconstruida_sem_abertura_continua_sendo_alarme(monkeypatch, capsys):
+    """Coleção antiga é congelada; sem a linha, o denominador começa do zero."""
+    monkeypatch.setattr(ficha.consulta, "sellout", lambda ate, codigo=None: [
+        {**linha(10, 5, 0), "cor": "", "descricao": "X", "colecao": "SS24",
+         "sellout": 0.5, "sobra": 5.0}])
+    monkeypatch.setattr(ficha.consulta, "foto_de_estoque", lambda ate: None)
+    monkeypatch.setattr(ficha, "abertura", lambda c, a: [])
+    monkeypatch.setattr(ficha, "movimentos", lambda c, a: [])
+    monkeypatch.setattr(ficha.consulta, "vendas_por_filial", lambda cs, a: {})
+    ficha.main(["212006", "--ate", "2026-09-20"])
+    assert "deveria ter um" in capsys.readouterr().out
