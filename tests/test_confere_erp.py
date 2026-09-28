@@ -170,3 +170,48 @@ def test_nome_de_um_lado_so_e_denunciado():
 def test_filiais_que_casam_nao_sao_denunciadas():
     s = confere_erp.so_de_um_lado({chave(fil="SITE"): 1.0}, {chave(fil="SITE"): 2.0})
     assert s == {"export": [], "banco": []}
+
+
+# ------------------------- separar extracao de carga (o CSV do coletor)
+
+def csv_do_coletor(tmp_path, *linhas):
+    caminho = tmp_path / "vendas.csv"
+    cab = "FILIAL;CODIGO;DESCRICAO;CODIGO COR;COR;TAMANHO;QTDE;VALOR\n"
+    caminho.write_text(cab + "".join(linhas), encoding="utf-8-sig")
+    return str(caminho)
+
+
+def linha_csv(fil="EGREY JDS", cod="332004", cor="0002", tam="38", qtd="1"):
+    return f"{fil};{cod};;{cor};PRETO;{tam};{qtd};100.00\n"
+
+
+def test_o_csv_do_coletor_le_no_mesmo_grao(tmp_path):
+    """O CSV fica exatamente entre a exportação do ERP e o banco: é ele que diz
+    se uma devolução se perdeu na extração ou na carga."""
+    d, _ = confere_erp.do_csv(csv_do_coletor(tmp_path, linha_csv(tam="38"),
+                                            linha_csv(tam="40")))
+    assert d == {("332004", "0002", "EGREY JDS"): 2.0}
+
+
+def test_a_devolucao_negativa_vem_do_csv_com_sinal(tmp_path):
+    d, _ = confere_erp.do_csv(csv_do_coletor(tmp_path, linha_csv(qtd="-1")))
+    assert d[("332004", "0002", "EGREY JDS")] == -1.0
+
+
+def test_o_csv_e_comparavel_com_a_exportacao_sem_traducao(tmp_path):
+    """A mesma chave dos dois lados — é o que permite comparar os três."""
+    ex, _ = confere_erp.do_export(export(tmp_path, linha(fil="JARDINS")))
+    cs, _ = confere_erp.do_csv(csv_do_coletor(tmp_path, linha_csv()))
+    assert confere_erp.fiel(confere_erp.compara(ex, cs))
+
+
+def test_csv_sem_as_colunas_necessarias_para_com_erro(tmp_path):
+    caminho = tmp_path / "x.csv"
+    caminho.write_text("FILIAL;CODIGO\nSITE;332004\n", encoding="utf-8-sig")
+    with pytest.raises(ValueError, match="nao tem as colunas"):
+        confere_erp.do_csv(str(caminho))
+
+
+def test_quantidade_com_virgula_decimal(tmp_path):
+    d, _ = confere_erp.do_csv(csv_do_coletor(tmp_path, linha_csv(qtd="2,0")))
+    assert d[("332004", "0002", "EGREY JDS")] == 2.0

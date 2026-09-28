@@ -45,7 +45,7 @@ from .conexao import conectar
 # apareceu no meio da planilha.
 COLUNAS = {"filial": ("FILIAL",),
            "codigo": ("CÓDIGO", "CODIGO"),
-           "codigo_cor": ("CODIGO_COR", "CÓDIGO_COR", "COD_COR"),
+           "codigo_cor": ("CODIGO_COR", "CÓDIGO_COR", "COD_COR", "CODIGO COR"),
            "tamanho": ("TAM", "TAMANHO"),
            "qtd": ("QTDE", "QTD", "QUANTIDADE")}
 
@@ -119,6 +119,50 @@ def do_export(caminho: str) -> tuple[dict, list]:
                  filial_do_export(ws.cell(r, m["filial"]).value))
         fora[chave] += float(q)
     wb.close()
+    return dict(fora), avisos
+
+
+def do_csv(caminho: str) -> tuple[dict, list]:
+    """O mesmo dicionário, lido do CSV que o `coletor.vendas` grava.
+
+    **É o que separa dois defeitos que dão o mesmo sintoma.** Se a exportação do
+    ERP tem uma devolução que o banco não tem, ela se perdeu na extração ou na
+    carga — e o CSV do coletor fica exatamente no meio dos dois. Comparar com
+    ele diz qual metade olhar, em vez de ler o código das duas.
+
+    O coletor também descarta chave de saldo zero (`abs(qtd) > 0`), igual à
+    carga: uma venda e uma devolução da mesma peça na mesma semana não viram
+    linha em lugar nenhum.
+    """
+    import csv as _csv
+    with open(caminho, newline="", encoding="utf-8-sig") as f:
+        linhas = list(_csv.reader(f, delimiter=";"))
+    if not linhas:
+        raise ValueError(f"{caminho} esta vazio")
+    cab = [nrm(x) for x in linhas[0]]
+    m = {}
+    for i, t in enumerate(cab, 1):
+        for campo, nomes in COLUNAS.items():
+            if t in nomes and campo not in m:
+                m[campo] = i
+    faltando = [c for c in COLUNAS if c not in m and c != "tamanho"]
+    if faltando:
+        raise ValueError(f"o CSV nao tem as colunas {faltando}; cabecalho: {cab}")
+    fora, avisos = defaultdict(float), []
+    for n, linha in enumerate(linhas[1:], 2):
+        if len(linha) < max(m.values()):
+            continue
+        cod = norm_codigo(linha[m["codigo"] - 1])
+        if not cod:
+            continue
+        try:
+            q = float(str(linha[m["qtd"] - 1]).replace(",", "."))
+        except ValueError:
+            avisos.append(f"linha {n}: quantidade nao numerica "
+                          f"({linha[m['qtd'] - 1]!r})")
+            continue
+        fora[(cod, nrm(linha[m["codigo_cor"] - 1]),
+              filial_do_export(linha[m["filial"] - 1]))] += q
     return dict(fora), avisos
 
 
@@ -197,16 +241,51 @@ def fiel(r: dict) -> bool:
     return not r["difere"] and not r["so_erp"] and not r["so_banco"]
 
 
+def lista_snapshots(limite=15) -> list:
+    """As últimas semanas gravadas, com origem e linhas de venda.
+
+    Existe porque "o banco nao tem snapshot dessa data" não diz qual data tem, e
+    a rodada do app grava no dia em que roda, não no domingo que fecha a semana.
+    """
+    with conectar() as c, c.cursor() as cur:
+        cur.execute(
+            "SELECT s.data, s.origem, s.quem, count(v.snapshot_id) AS linhas "
+            "  FROM snapshot s LEFT JOIN venda v ON v.snapshot_id = s.id "
+            " GROUP BY s.id, s.data, s.origem, s.quem "
+            " ORDER BY s.data DESC, s.id DESC LIMIT %s", (limite,))
+        return [{"data": d, "origem": o, "quem": q or "", "linhas": n}
+                for d, o, q, n in cur.fetchall()]
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(
         description="A exportacao do ERP contra o banco, na mesma semana")
-    p.add_argument("export", help="xlsx exportado do ERP (Filial, Codigo, Qtde...)")
-    p.add_argument("--semana", type=date.fromisoformat, required=True,
+    p.add_argument("export", nargs="?",
+                   help="xlsx exportado do ERP (Filial, Codigo, Qtde...)")
+    p.add_argument("--semana", type=date.fromisoformat,
                    help="o domingo que fecha a semana, como esta em snapshot.data")
     p.add_argument("--origem", default="erp", choices=("erp", "upload"),
                    help="erp = carga retroativa; upload = rodada do app")
+    p.add_argument("--csv", help="compara com o CSV do coletor.vendas em vez\n"
+                                "                         do banco: separa extracao de carga")
+    p.add_argument("--listar", action="store_true",
+                   help="so lista as ultimas semanas gravadas e sai")
     p.add_argument("--limite", type=int, default=20)
     args = p.parse_args(argv)
+
+    if args.listar:
+        print("\nUltimas semanas no banco:\n")
+        print(f'  {"data":12} {"origem":8} {"quem":22} {"linhas":>8}')
+        print("  " + "-" * 54)
+        for s_ in lista_snapshots():
+            print(f'  {str(s_["data"]):12} {s_["origem"]:8} {s_["quem"][:22]:22} '
+                  f'{s_["linhas"]:>8,}')
+        return 0
+
+    if not args.export:
+        p.error("falta o arquivo exportado do ERP")
+    if not args.semana and not args.csv:
+        p.error("--semana e obrigatorio (ou use --csv)")
 
     caminho = pathlib.Path(args.export.strip().strip("<>").strip('"').strip("'"))
     if not caminho.exists():
@@ -214,29 +293,42 @@ def main(argv=None):
         return 1
 
     ex, avisos = do_export(str(caminho))
-    snaps = snapshots_da_semana(args.semana, args.origem)
-    print(f"\nERP x banco — semana de {args.semana}, origem {args.origem}")
+    rotulo = "extracao" if args.csv else "banco"
+    if args.csv:
+        print(f"\nERP x extracao (CSV do coletor) — {args.csv}")
+    else:
+        print(f"\nERP x banco — semana de {args.semana}, origem {args.origem}")
     print(f"  exportacao: {len(ex):,} chave(s) produto+cor+filial")
     if avisos:
         print(f"  {len(avisos)} linha(s) ignorada(s) na exportacao:")
         for a in avisos[:5]:
             print(f"    {a}")
 
-    if not snaps:
+    if args.csv:
+        ba, avisos_csv = do_csv(args.csv)
+        for a in avisos_csv[:5]:
+            print(f"  CSV: {a}")
+        snaps = None
+    else:
+        snaps = snapshots_da_semana(args.semana, args.origem)
+    if snaps is not None and not snaps:
         print(f"\n  O banco nao tem snapshot de {args.semana} com origem "
               f"'{args.origem}'.")
-        print("  Sem isso nao ha o que comparar — confira a data do domingo.")
+        print("  Sem isso nao ha o que comparar. `--listar` diz quais datas tem:")
+        print("  a rodada do app grava no dia em que roda, nao no domingo que")
+        print("  fecha a semana.")
         return 1
-    if len(snaps) > 1:
+    if snaps is not None and len(snaps) > 1:
         # Duas cargas da mesma semana dobram tudo, e o dobro parece plausivel.
         print(f"\n  {len(snaps)} snapshots para a MESMA semana e origem: {snaps}")
         print("  Somar os dois dobraria a venda da semana. Isto e defeito de")
         print("  carga, e precisa ser resolvido antes de conferir qualquer coisa.")
         return 1
 
-    ba = do_banco(snaps)
+    if snaps is not None:
+        ba = do_banco(snaps)
     r = compara(ex, ba)
-    print(f"  banco:      {len(ba):,} chave(s)")
+    print(f"  {rotulo + ':':11} {len(ba):,} chave(s)")
 
     # Antes de qualquer número: nome que existe de um lado só invalida a leitura
     # de tudo o que vem depois.
@@ -250,12 +342,12 @@ def main(argv=None):
         print("    Se for a mesma loja com dois nomes, a conferencia acusa a loja")
         print("    inteira duas vezes e nada bate. O apelido vai em ALIAS_FILIAL.")
     print(f"\n  total de pecas   ERP {r['total_erp']:>8,.0f}   "
-          f"banco {r['total_banco']:>8,.0f}   "
+          f"{rotulo} {r['total_banco']:>8,.0f}   "
           f"dif {r['total_erp'] - r['total_banco']:>+7,.0f}")
     print(f"\n  iguais na peca          {len(r['iguais']):>6}")
     print(f"  diferem                 {len(r['difere']):>6}")
     print(f"  so na exportacao do ERP {len(r['so_erp']):>6}")
-    print(f"  so no banco             {len(r['so_banco']):>6}")
+    print(f"  so no {rotulo:18} {len(r['so_banco']):>6}")
 
     if fiel(r):
         print("\n  A EXTRACAO REPRODUZ O ERP NESTA SEMANA, chave a chave.")
@@ -274,7 +366,7 @@ def main(argv=None):
               f'{d["dif"]:>+7,.0f} {d["chaves"]:>7}')
 
     for rotulo, lista in (("diferem", r["difere"]), ("so na exportacao", r["so_erp"]),
-                          ("so no banco", r["so_banco"])):
+                          (f"so no {rotulo}", r["so_banco"])):
         if not lista:
             continue
         print(f"\n  {rotulo} ({len(lista)}):")
